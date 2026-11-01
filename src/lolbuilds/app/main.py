@@ -16,6 +16,7 @@ import os
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from collections.abc import Sequence
 from pathlib import Path
@@ -219,6 +220,36 @@ def _start_server(ctrl: Controller, port: int, retry: bool) -> None:
             time.sleep(0.5)
 
 
+PORT_FALLBACKS = 20  # ports essayés après celui demandé (8766, 8767…) s'il est occupé par autre chose
+
+
+def _existing_instance(port: int) -> bool | None:
+    """Le port est-il tenu par lolbuilds ? True : sa fenêtre a été ramenée devant ; None : c'est lolbuilds mais une
+    version qui ne sait pas le faire ; False : autre chose (autre logiciel, plage de ports réservée par Windows)."""
+    base = f"http://127.0.0.1:{port}"
+    try:
+        with urllib.request.urlopen(base + "/", timeout=2) as resp:
+            if b"<title>lolbuilds</title>" not in resp.read(4096):
+                return False
+    except Exception:  # noqa: BLE001  (rien n'écoute vraiment : port réservé, pare-feu…)
+        return False
+    try:
+        urllib.request.urlopen(urllib.request.Request(base + "/api/focus", data=b"{}", method="POST"), timeout=2).close()
+        return True
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _start_on_free_port(ctrl: Controller, port: int) -> int | None:
+    for candidate in range(port + 1, port + 1 + PORT_FALLBACKS):
+        try:
+            serve_in_thread(ctrl, "127.0.0.1", candidate)
+            return candidate
+        except OSError:
+            continue
+    return None
+
+
 def run(args: argparse.Namespace) -> int:
     if args.check_gui:
         return check_gui()
@@ -227,15 +258,29 @@ def run(args: argparse.Namespace) -> int:
     # Supprime l'ancien exe laissé par la dernière mise à jour portable (il se libère après quelques secondes).
     threading.Thread(target=_cleanup_previous, name="lolbuilds-cleanup", daemon=True).start()
     ctrl = Controller(cfg, demo=args.demo, demo_builds=args.demo_builds)
-    url = f"http://127.0.0.1:{args.port}/"
+    port = args.port
     try:
-        _start_server(ctrl, args.port, args.after_update)
+        _start_server(ctrl, port, args.after_update)
     except OSError as exc:
-        log.error("Port %d indisponible (%s) : l'application tourne peut-être déjà.", args.port, exc)
-        if not args.browser:
-            _alert(f"lolbuilds est déjà ouvert (ou le port {args.port} est occupé).\n\n"
-                   "Cherche sa fenêtre dans la barre des tâches.")
+        running = _existing_instance(port)
+        if running is not False:
+            # lolbuilds tourne déjà : sa fenêtre revient devant (les anciennes versions ne savent pas, on prévient).
+            log.info("lolbuilds tourne déjà sur le port %d : on ramène sa fenêtre", port)
+            if running is None and not args.browser:
+                _alert("lolbuilds est déjà ouvert.\n\nCherche sa fenêtre dans la barre des tâches.")
+            if args.browser:
+                webbrowser.open(f"http://127.0.0.1:{port}/")
+            return 0
+        # Port pris par autre chose (souvent une plage réservée par Windows avec Hyper-V, WSL ou Docker) : un autre.
+        free = _start_on_free_port(ctrl, port)
+        if free is None:
+            log.error("Ports %d à %d indisponibles (%s)", port, port + PORT_FALLBACKS, exc)
+            _alert(f"lolbuilds n'a trouvé aucun port libre entre {port} et {port + PORT_FALLBACKS}.\n\n"
+                   "Un autre logiciel les occupe : redémarre le PC puis relance lolbuilds.")
             return 1
+        log.warning("Port %d occupé par un autre logiciel (%s) : interface sur le port %d", port, exc, free)
+        port = free
+    url = f"http://127.0.0.1:{port}/"
     log.info("Interface sur %s%s", url, " (démo)" if args.demo else "")
 
     if args.browser or args.server_only:
@@ -256,6 +301,7 @@ def run(args: argparse.Namespace) -> int:
 
     api = WindowApi()
     api.start_watching()
+    ctrl.on_focus = api.focus  # une seconde instance lancée par le joueur ramène cette fenêtre devant
     api._window = webview.create_window(
         "lolbuilds", url + "?desktop=1", js_api=api, width=1240, height=800, min_size=(960, 640),
         frameless=True, easy_drag=False, background_color="#0A0D13",

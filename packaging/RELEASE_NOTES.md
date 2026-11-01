@@ -1,13 +1,7 @@
-## Nouveautés
-
-- **Disco pick** (désactivé par défaut, à activer dans Réglages › Disco pick) : pendant ton tour de pick, le bouton **DISCO PICK ››** lance 15 secondes de roulette eurobeat (grille néon, compte-tours, VU-mètre à LED, musique). Le hasard choisit un champion que tu possèdes dans ta lane (ni banni ni pris), un de ses builds OP.GG et tes sorts, puis le **verrouille** après 3 secondes : pas de marche arrière, on assume. L'écran reste jusqu'au lancement de la partie (la croix le ferme, le tirage va quand même au bout).
-  - Réglages : champions de ta lane ou tous, build le plus joué ou au hasard, sorts du build ou « Chaos total », lumières douces / disco / strobo.
-  - Musique : une boucle eurobeat intégrée, ou ton propre morceau : pose un fichier `disco-music.mp3` dans le dossier `%USERPROFILE%\.lolbuilds`.
-- **Page Réglages réorganisée** : un sommaire à gauche et une carte par sujet (Champ select, Alertes et sons, Disco pick, Thème, Builds en cache, Mise à jour).
-
 ## Corrections
 
-- Le mode démo garde ses propres réglages : y tester une option ne la change plus dans l'application.
+- **« lolbuilds est déjà ouvert (ou le port 8765 est occupé) » alors qu'il ne l'était pas** : sur certains PC, le port local 8765 est pris par un autre logiciel ou réservé par Windows (fréquent avec Hyper-V, WSL ou Docker). lolbuilds prend maintenant le port libre suivant et démarre normalement.
+- **lolbuilds relancé alors qu'il tourne déjà** : sa fenêtre revient au premier plan au lieu d'afficher un message.
 
 ## Mettre à jour
 

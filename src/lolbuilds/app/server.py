@@ -156,6 +156,7 @@ class Controller:
         self._live_roles: dict[str, list[str]] = {}
         self._preview: int | None = None  # champion proposé cliqué avant le pick (aperçu)
         self._disco: int | None = None  # champion tiré par le Disco pick (affiché pendant mon tour)
+        self.on_focus: Any = None  # ramène la fenêtre de bureau devant (posé par main.py)
         self._pool: tuple[set[int] | None, dict[int, int]] | None = None  # (possédés, maîtrises) du joueur
         self._counters: tuple[tuple[str, str], list[dict[str, Any]]] | None = None
         self._team_task: asyncio.Task[None] | None = None
@@ -1057,6 +1058,13 @@ def make_app(ctrl: Controller) -> web.Application:
                 break
         ctrl.sockets.discard(ws)
         return ws
+
+    @routes.post("/api/focus")
+    async def focus(_req: web.Request) -> web.Response:
+        """Le joueur relance lolbuilds alors qu'il tourne déjà : on montre la fenêtre existante."""
+        if ctrl.on_focus:
+            await asyncio.to_thread(ctrl.on_focus)
+        return web.json_response({"ok": True})
 
     @routes.get("/api/static")
     async def static_data(_req: web.Request) -> web.Response:
