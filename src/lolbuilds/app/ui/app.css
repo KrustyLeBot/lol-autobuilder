@@ -1123,3 +1123,6 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
   font: 400 28px/1 var(--f-body); color: #fff; background: rgb(10 6 20 / .7); border: 1px solid rgb(255 255 255 / .35); border-radius: 50%; cursor: pointer; }
 .dz-close:hover { background: var(--red); border-color: var(--red); }
 .dz-tach { right: 64px; }
+
+html, body { overflow: hidden; }
+.app { overflow: hidden; }

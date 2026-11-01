@@ -917,7 +917,7 @@ $("#set-sounds").addEventListener("change", (e) => {
 });
 $("#view-settings").addEventListener("click", (e) => {
   const jump = e.target.closest("[data-setjump]");
-  if (jump) $(`#${jump.dataset.setjump}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (jump) settingsJump(jump.dataset.setjump);
   const test = e.target.closest("[data-testsound]");
   if (test) playSound($(`select[data-sound="${test.dataset.testsound}"]`).value, state?.settings?.volume);
   const theme = e.target.closest("[data-theme]");
@@ -929,6 +929,16 @@ $("#view-settings").addEventListener("click", (e) => {
   if (upd) post(`/api/update/${upd.dataset.update}`, {});
 });
 $("#lib-search").addEventListener("input", renderLibrary);
+
+/** Sommaire des réglages : ne fait défiler que la zone de contenu. `scrollIntoView` ferait aussi défiler la fenêtre
+    entière (barre de titre et rail sortaient de l'écran). */
+function settingsJump(id) {
+  const main = $(".main");
+  const target = $(`#${id}`);
+  if (!main || !target) return;
+  const top = target.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop - 16;
+  main.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
 
 /* ------------------------------------------------------------------ minuteur */
 function tickTimer() {
