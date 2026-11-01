@@ -107,6 +107,10 @@ def select_counter_picks(counters: list[dict[str, Any]], unavailable: set[int], 
     return sorted(picks, key=lambda c: c["winrate"], reverse=True)[:COUNTER_MAX]
 
 
+# Phases hors partie : on oublie le build et les joueurs de la partie précédente.
+IDLE_PHASES = ("None", "Lobby", "Matchmaking", "ReadyCheck")
+
+
 class Controller:
     def __init__(self, cfg: Config, demo: bool = False, demo_builds: bool = False) -> None:
         self.cfg = cfg
@@ -235,10 +239,17 @@ class Controller:
 
     async def on_session(self, s: dict[str, Any] | None) -> None:
         if not s:
+            # Champion verrouillé : son build reste affiché pendant la partie (oublié au retour au salon).
+            keep = bool(self.state["current"] and self.state["current"].get("locked")
+                        and self.state.get("phase") not in IDLE_PHASES)
             self.state["champSelect"] = None
-            self.state["current"] = None
-            self.state["applied"] = None
-            self.build, self._base, self._applied_for = None, None, None
+            if keep:
+                self.state["current"]["preview"] = False
+            else:
+                self.state["current"] = None
+                self.state["applied"] = None
+                self.build, self._base = None, None
+            self._applied_for = None
             self._matchup, self._opponent_override, self._manual = None, None, False
             self._atypical = None
             self._preview, self._pool = None, None
@@ -361,7 +372,8 @@ class Controller:
 
     def _maybe_auto_apply(self) -> None:
         cur = self.state["current"]
-        if (cur and cur.get("locked") and self.build and self.prefs.data["autoApply"] and not self._manual
+        if (cur and cur.get("locked") and self.state["champSelect"] and self.build and self.prefs.data["autoApply"]
+                and not self._manual
                 and self._applied_for != self._apply_key()):
             self._schedule_apply(cur["championId"])
 
@@ -458,14 +470,18 @@ class Controller:
     # ------------------------------------------------------------------ mon équipe pendant la partie
 
     def on_phase(self, phase: str) -> None:
-        """Partie en cours : charge les profils de mon équipe ; sinon on les oublie."""
+        """Partie en cours : charge les profils des joueurs ; sinon on les oublie."""
         if phase == "InProgress":
             if self.live and (not self._team_task or self._team_task.done()) and not self.state["team"]:
                 self._team_task = asyncio.create_task(self._load_team())
-        elif phase in ("None", "Lobby", "Matchmaking", "ReadyCheck", "ChampSelect"):
+        elif phase in (*IDLE_PHASES, "ChampSelect"):
             if self._team_task and not self._team_task.done():
                 self._team_task.cancel()
             self.state["team"] = None
+            if phase in IDLE_PHASES and not self.state["champSelect"]:
+                self.state["current"] = None  # build de la partie précédente
+                self.state["applied"] = None
+                self.build, self._base = None, None
 
     async def _load_team(self) -> None:
         assert self.live
@@ -495,25 +511,58 @@ class Controller:
                      or str(p.get("riotId") or p.get("summonerName") or "").lower() == me.lower()), None)
         side = (mine or {}).get("team")
         allies = [p for p in everyone if p.get("team") == side] if side else everyone[:5]
-        for p in allies:
+        enemies = [p for p in everyone if p.get("team") != side] if side else everyone[5:]
+
+        def entry(p: dict[str, Any]) -> dict[str, Any]:
             name, tag = players.riot_id(p)
             champ = players.champion_id(p)
             key = next((k for k, v in self.champions.by_key.items() if v == champ), None)
-            team["players"].append({"riotId": f"{name}#{tag}", "isMe": p is mine, "championId": key,
-                                    "position": str(p.get("position") or "").lower(), "status": "loading"})
+            return {"riotId": f"{name}#{tag}", "isMe": p is mine, "championId": key,
+                    "position": str(p.get("position") or "").lower(), "status": "loading"}
+
+        team["players"] = [entry(p) for p in allies]
+        team["enemies"] = [entry(p) for p in enemies]
+        # Vis-à-vis : l'ennemi au même poste que moi, sinon l'adversaire de lane retenu en champ select.
+        cur = self.state["current"] or {}
+        my_pos = str((mine or {}).get("position") or "").lower()
+        opp_id = (cur.get("opponent") or {}).get("championId")
+        opp = next((e for e in team["enemies"] if my_pos and e["position"] == my_pos), None) \
+            or next((e for e in team["enemies"] if opp_id and e["championId"] == opp_id), None)
+        if opp:
+            opp["isOpponent"] = True
         await self.broadcast()
-        for entry, p in zip(team["players"], allies):
+        pairs = [*zip(team["players"], allies), *zip(team["enemies"], enemies)]
+        pairs.sort(key=lambda x: 0 if x[0] in team["players"] or x[0] is opp else 1)  # mon équipe et mon vis-à-vis d'abord
+        for e, p in pairs:
             name, tag = players.riot_id(p)
             try:
                 profile = await asyncio.to_thread(self.live.player_profile, name, tag, region)
                 champ_name = self.champions.names.get(players.champion_id(p), players.champion_id(p))
-                entry.update(players.player_card(profile, entry["championId"], champ_name), status="ok")
+                e.update(players.player_card(profile, e["championId"], champ_name), status="ok")
             except Exception as exc:
                 log.warning("Profil OP.GG de %s#%s indisponible : %s", name, tag, exc)
-                entry["status"] = "error"
+                e["status"] = "error"
+            if e is opp:
+                await self._load_opponent(opp, name, tag, region, players.champion_id(p))
             await self.broadcast()
         team["status"] = "ok"
         await self.broadcast()
+
+    async def _load_opponent(self, opp: dict[str, Any], name: str, tag: str, region: str, champ: str) -> None:
+        """Mon vis-à-vis : ses dernières parties et la lecture du duel par OP.GG."""
+        assert self.live
+        try:
+            matches = await asyncio.to_thread(self.live.player_matches, name, tag, region)
+            opp["form"] = players.recent_form(matches, opp["championId"])
+        except Exception as exc:
+            log.warning("Historique OP.GG de %s#%s indisponible : %s", name, tag, exc)
+        cur = self.state["current"] or {}
+        role = cur.get("role")
+        if cur.get("champion") and role in ROLES and champ in self.champions.names:
+            try:
+                opp["matchup"] = await asyncio.to_thread(self.live.matchup_insight, cur["champion"], role, champ)
+            except Exception as exc:
+                log.warning("Duel OP.GG contre %s indisponible : %s", champ, exc)
 
     # ------------------------------------------------------------------ mise à jour (releases GitHub)
 

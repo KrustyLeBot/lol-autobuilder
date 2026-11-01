@@ -19,6 +19,11 @@ PROFILE_FIELDS = [
     "data.summoner.most_champions.champion_stats[].{id,champion_name,play,win,kill,death,assist}",
     "data.summoner.most_champions.{play,win}",
 ]
+MATCH_FIELDS = [
+    "data.game_history[].{game_type,created_at}",
+    "data.game_history[].participants[].{champion_id,position}",
+    "data.game_history[].participants[].stats.{kill,death,assist,result}",
+]
 TIERS_FR = {"IRON": "Fer", "BRONZE": "Bronze", "SILVER": "Argent", "GOLD": "Or", "PLATINUM": "Platine",
             "EMERALD": "Émeraude", "DIAMOND": "Diamant", "MASTER": "Maître", "GRANDMASTER": "Grand Maître",
             "CHALLENGER": "Challenger"}
@@ -104,4 +109,25 @@ def player_card(profile: Any, champion_key: int | None, champion_name: str) -> d
         "champion": champ,
         "mains": [c.get("id") for c in sorted(champs, key=lambda c: c.get("play") or 0, reverse=True)[:3] if c.get("id")],
         "tags": tags,
+    }
+
+
+def recent_form(matches: Any, champion_key: int | None) -> dict[str, Any] | None:
+    """Ses dernières parties (la plus récente d'abord) : bilan, KDA, parties sur ce champion, série en cours."""
+    games = []
+    for g in ((matches or {}).get("data") or {}).get("game_history") or []:
+        p = (g.get("participants") or [{}])[0] or {}
+        st = p.get("stats") or {}
+        if st.get("result") not in ("WIN", "LOSE"):
+            continue  # remakes
+        games.append((st["result"] == "WIN", p.get("champion_id"), st.get("kill") or 0, st.get("death") or 0, st.get("assist") or 0))
+    if not games:
+        return None
+    wins = sum(g[0] for g in games)
+    kda = (sum(g[2] + g[4] for g in games)) / max(1, sum(g[3] for g in games))
+    streak = next((i for i, g in enumerate(games) if g[0] != games[0][0]), len(games))
+    return {
+        "games": len(games), "wins": wins, "results": [g[0] for g in games], "kda": round(kda, 1),
+        "onChampion": sum(1 for g in games if champion_key and g[1] == champion_key),
+        "streak": {"win": games[0][0], "count": streak},
     }

@@ -297,23 +297,34 @@ function renderTop() {
 }
 
 /* ------------------------------------------------------------------ vue champ select */
+/* Une seule structure pour toutes les étapes : barre d'étape en haut ; à gauche le portrait du champion et ses
+   builds ; à droite la draft, les suggestions de l'étape (bans, bons picks), le détail du build, puis les joueurs
+   de la partie une fois en jeu. */
 function renderLive() {
   const root = $("#view-live");
   const cur = state.current;
   const cs = state.champSelect;
+  const team = state.team;
   let html;
   timerEnds = cs?.timer?.endsAt || null;
-  if (!cur) {
-    html = cs ? turnHtml(cs) + draftHtml(cs, null) + banHtml(state.banSuggestions) + counterHtml(state.counterPicks, null) + emptyHtml("pick")
-      : state.team ? teamHtml(state.team) : emptyHtml(state.connection);
+  if (!cur && !cs && !team) {
+    html = emptyHtml(state.connection);
   } else {
-    const b = cur.build;
-    const key = `${cur.championId}:${b?.role}:${b?.fetched_at}:${b?.variants?.length}`;
+    const b = cur?.build;
+    const key = `${cur?.championId}:${b?.role}:${b?.fetched_at}:${b?.variants?.length}`;
     const enter = key !== lastKey;
     lastKey = key;
-    html = (cs ? turnHtml(cs) : "") + heroHtml(cur, cs) + (cs ? draftHtml(cs, cur) + banHtml(state.banSuggestions) : "")
-      + (cs && !cur.locked ? counterHtml(state.counterPicks, cur) : "")
-      + (b ? buildHtml(cur, b, cs, enter) : noBuildHtml(cur));
+    const variants = b ? variantsOf(b) : [];
+    const sel = Math.min(state.selection.variant || 0, Math.max(0, variants.length - 1));
+    const side = !cur ? sideHintHtml(cs)
+      : b ? variantListHtml(variants, sel, cs, enter) : `<p class="side-msg${cur.fetching ? " loading" : ""}">${cur.fetching ? "Récupération du build sur OP.GG…" : "Pas de build OP.GG pour ce champion dans ce rôle."}</p>`;
+    const main = (cs ? draftHtml(cs, cur) + banHtml(state.banSuggestions) : "")
+      + (cs && !cur?.locked ? counterHtml(state.counterPicks, cur) : "")
+      + (cur && b ? (cs || state.applied ? appliedBarHtml(state.applied, variants) : "") + detailHtml(b, variants[sel], cs) : "")
+      + (cur && !b ? noBuildHtml(cur) : "")
+      + (team ? teamsHtml(team) : "");
+    html = stageHtml(cs, team) + `<div class="live"><aside class="live-side">${portraitHtml(cur, cs)}${side}</aside>
+      <div class="live-main">${main}</div></div>`;
   }
   // Le client envoie des events en rafale : on ne touche au DOM que si le rendu change.
   if (html.replace(" enter", "") === lastHtml.replace(" enter", "")) return;
@@ -384,16 +395,99 @@ function draftHtml(cs, cur) {
     ${cur ? matchupHtml(cs, opp) : ""}`;
 }
 
-function turnHtml(cs) {
-  const t = cs.turn;
-  if (!t && cs.stage === "planning") {
-    return `<div class="turn plan" role="status"><span class="turn-fill js-turn-fill" aria-hidden="true"></span><b>Prépick : déclare ton champion</b>
-      ${timerEnds ? '<span class="timer num js-timer"></span>' : ""}</div>`;
+/** Barre d'étape, toujours en haut : ce qui se passe, le fil des étapes et le compte à rebours. */
+function stageHtml(cs, team) {
+  const STEPS = ["Prépick", "Bans", "Picks", "Finalisation", "En jeu"];
+  let step, text, cls = "";
+  if (!cs) {
+    step = 4; text = team ? "Partie en cours" : "Partie terminée"; cls = "game";
+  } else if (cs.turn) {
+    step = cs.turn.type === "ban" ? 1 : 2;
+    text = cs.turn.type === "ban" ? "À toi de bannir" : "À toi de choisir ton champion"; cls = cs.turn.type;
+  } else {
+    const picked = [...cs.allies, ...cs.enemies].some((p) => p.championId);
+    step = { planning: 0, ban: 1, pick: 2, finalization: 3 }[cs.stage] ?? (picked ? 2 : 1);
+    text = { planning: "Prépick · annonce ton champion", ban: "Bans en cours", pick: "Picks en cours",
+             finalization: "Finalisation · la partie va commencer" }[cs.stage] || "Sélection des champions";
+    cls = cs.stage === "planning" ? "plan" : "";
   }
-  if (!t) return "";
-  const what = t.type === "ban" ? "bannir" : "choisir ton champion";
-  return `<div class="turn ${t.type}" role="status"><span class="turn-fill js-turn-fill" aria-hidden="true"></span><span class="turn-dot"></span><b>À toi de ${what}</b>
-    ${timerEnds ? '<span class="timer num js-timer"></span>' : ""}</div>`;
+  const crumbs = STEPS.map((s, i) => `<span class="crumb${i === step ? " on" : i < step ? " done" : ""}">${s}</span>`)
+    .join('<span class="crumb-sep" aria-hidden="true">›</span>');
+  return `<div class="turn stage ${cls}" role="status"><span class="turn-fill js-turn-fill" aria-hidden="true"></span>
+    ${cs?.turn ? '<span class="turn-dot"></span>' : ""}<b>${text}</b><span class="crumbs">${crumbs}</span>
+    ${cs && timerEnds ? '<span class="timer num js-timer"></span>' : ""}</div>`;
+}
+
+/** Portrait du champion (splash), ou l'emblème du thème tant que rien n'est survolé. */
+function portraitHtml(cur, cs) {
+  if (!cur) {
+    return `<header class="portrait is-empty"><div class="portrait-emblem">${`<svg class="hexwait" viewBox="0 0 80 80" aria-hidden="true">
+      <g class="spin"><path d="M40 4 71 22v36L40 76 9 58V22z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="6 8"/></g>
+      <path d="M40 22 56 31v18L40 58 24 49V31z" fill="currentColor" opacity=".18"/><path d="M40 30 48 34.6v9.2L40 48.5 32 43.8v-9.2z" fill="currentColor"/></svg>`}</div>
+      <div class="portrait-info"><span class="eyebrow">${cs ? "Aucun champion" : "En jeu"}</span>
+      <h1 class="hero-name">${cs ? "À toi de choisir" : "Partie en cours"}</h1></div></header>`;
+  }
+  const c = champ(cur.championId);
+  const b = cur.build;
+  const phase = cs ? (cur.locked ? "Verrouillé" : cur.preview ? "Aperçu · bon pick" : "Survolé") : "En jeu";
+  const roles = (cur.roles.length ? cur.roles : [cur.role]).filter(Boolean);
+  const tabs = roles.map((r) => `<button type="button" class="role-tab" data-role="${r}" aria-pressed="${r === cur.role}">
+      ${roleIcon(r)}${ROLE_LABEL[r] || r}${r === cur.assigned ? '<span class="assigned" title="Rôle assigné"></span>' : ""}</button>`).join("");
+  const meta = cur.fetching ? '<span class="loading">Récupération sur OP.GG…</span>'
+    : b ? `<span>Winrate <b class="${wrClass(b.winrate)}">${pct(b.winrate)}</b></span><span><b>${int(b.sample_size)}</b> parties</span>
+      <span>Patch <b>${esc(b.patch)}</b></span>` : "";
+  return `<header class="portrait"><div class="portrait-splash" style="background-image:url('${asset("splash", cur.championId)}')"></div>
+    <span class="portrait-chip">${phase}</span>
+    <div class="portrait-info"><h1 class="hero-name">${esc(c?.name || cur.champion || "Champion")}</h1>
+      <p class="hero-title">${esc(c?.title || "")}</p><div class="roles">${tabs}</div><div class="meta num">${meta}</div></div></header>`;
+}
+
+function sideHintHtml(cs) {
+  if (!cs) return "";
+  return `<p class="side-msg">Survole ou verrouille un champion : ses builds OP.GG s'affichent ici, triés par winrate.</p>`;
+}
+
+/** Les builds proposés, en lignes compactes sous le portrait (touches 1 à 3). */
+function variantListHtml(variants, sel, cs, enter) {
+  const applied = state.applied;
+  const flashKey = state.settings.flashKey;
+  const rows = variants.map((v, i) => {
+    const ks = perk(v.perks[0]);
+    const core = (v.blocks.find((x) => x.key === "core") || v.blocks.find((x) => /^Core/.test(x.type)))?.items || [];
+    const boots = (v.blocks.find((x) => x.key === "boots") || v.blocks.find((x) => /^Bottes/.test(x.type)))?.items?.[0];
+    const tags = [...(v.tags || []).map((t) => `<span class="tag${t === "Le plus joué" ? " alt" : t.startsWith("Contre ") ? " vs" : t.startsWith("Atypique") ? " atypical" : ""}">${esc(t)}</span>`),
+      v.details?.runes?.fallback ? '<span class="tag warn">Échantillon faible</span>' : ""].join("");
+    const isApplied = applied && applied.variant === i;
+    const action = !cs ? "" : isApplied ? "Appliqué" : state.busy && i === sel ? "Application…" : "Appliquer";
+    const items = [...core, ...(boots ? [boots] : [])].map((it) => img("item", it.id, "icon", tipAttr("item", it.id))).join("");
+    const spells = orient(v.spells, flashKey).map((s) => img("spell", s, "icon", tipAttr("spell", s))).join("");
+    return `<button type="button" class="vrow${i === sel ? " selected" : ""}${isApplied ? " applied" : ""}" data-variant="${i}" aria-pressed="${i === sel}">
+      <span class="vrow-key">${img("perk", v.perks[0], "keystone", tipAttr("perk", v.perks[0]))}<span class="vrow-n num">${i + 1}</span></span>
+      <span class="vrow-txt"><span class="vname">${esc(ks?.name || "Runes")}</span>
+        <span class="vtrees">${img("perk", v.primaryStyle, "")}${esc(style(v.primaryStyle)?.name || "")}<span>·</span>${img("perk", v.subStyle, "")}${esc(style(v.subStyle)?.name || "")}</span></span>
+      <span class="vwr num"><strong class="${wrClass(v.winrate)}">${pct(v.winrate)}</strong><span>${int(v.games)} parties</span></span>
+      <span class="tags">${tags}</span>
+      <span class="vrow-foot"><span class="vitems">${items}</span><span class="spells">${spells}</span>${action ? `<span class="vaction">${action}</span>` : ""}</span>
+    </button>`;
+  }).join("");
+  return `<div class="side-head"><h2 class="section-title">Builds</h2><span class="section-note">touches 1 à ${variants.length}</span></div>
+    <div class="vrows${enter ? " enter" : ""}">${rows}</div>`;
+}
+
+/** Détail du build choisi : runes et items côte à côte, puis sorts et ordre des compétences. */
+function detailHtml(b, v, cs) {
+  const skills = v.details?.skills || b.details?.skills || [];
+  return `<div class="detail"><div class="panel">${runesHtml(v)}</div><div class="panel">${itemsHtml(v)}</div></div>
+    <div class="detail detail-2"><div class="panel">${spellsHtml(b, v, cs)}</div>${skills.length ? `<div class="panel">${skillsHtml(skills)}</div>` : ""}</div>`;
+}
+
+function skillsHtml(order) {
+  const main = ["Q", "W", "E"].map((k) => [k, order.filter((s) => s === k).length])
+    .sort((a, b) => b[1] - a[1]).map(([k]) => k).join(" › ");
+  const rows = ["Q", "W", "E", "R"].map((k) => `<span class="sk-key">${k}</span>` + order.slice(0, 18)
+    .map((s, i) => `<span class="sk${s === k ? (k === "R" ? " on r" : " on") : ""}">${s === k ? i + 1 : ""}</span>`).join("")).join("");
+  return `<h3>Compétences <span class="h3-note">${main}</span></h3>
+    <div class="skills" style="--n:${Math.min(order.length, 18)}">${rows}</div>`;
 }
 
 function banHtml(bs) {
@@ -421,10 +515,23 @@ function banHtml(bs) {
     <span class="section-note">${hint}</span></div>${body}</section>`;
 }
 
-/** Partie en cours : les joueurs de mon équipe, avec leur profil OP.GG résumé. */
-function teamHtml(team) {
-  const ROLE_OF = { top: "top", jungle: "jungle", middle: "middle", mid: "middle", bottom: "bottom", utility: "utility", support: "utility" };
-  const cards = team.players.map((p) => {
+const ROLE_OF = { top: "top", jungle: "jungle", middle: "middle", mid: "middle", bottom: "bottom", utility: "utility", support: "utility" };
+
+/** Partie en cours : mon équipe, mon vis-à-vis (détaillé) et l'équipe adverse, avec leur profil OP.GG résumé. */
+function teamsHtml(team) {
+  const waiting = team.status === "loading" && !team.players.length
+    ? '<p class="cp-msg"><span class="loading">En attente du chargement de la partie…</span></p>' : "";
+  const none = team.status === "unavailable" ? '<p class="cp-msg dim">Les infos de la partie ne sont pas disponibles.</p>' : "";
+  const opp = (team.enemies || []).find((p) => p.isOpponent);
+  const enemies = team.enemies?.length ? `<section class="section team-view enemies"><div class="section-head"><h2 class="section-title">Équipe adverse</h2>
+    <span class="section-note">Profils OP.GG · classé solo, saison en cours</span></div><div class="tm-grid">${team.enemies.map(playerCardHtml).join("")}</div></section>` : "";
+  return `<section class="section team-view"><div class="section-head"><h2 class="section-title">Ton équipe</h2>
+    <span class="section-note">Profils OP.GG · classé solo, saison en cours</span></div>${waiting}${none}<div class="tm-grid">${team.players.map(playerCardHtml).join("")}</div></section>
+    ${opp ? opponentHtml(opp) : ""}${enemies}`;
+}
+
+function playerCardHtml(p) {
+  {
     const role = ROLE_OF[p.position] || "";
     const name = esc(p.riotId.split("#")[0]);
     const tag = esc(p.riotId.split("#")[1] || "");
@@ -434,22 +541,53 @@ function teamHtml(team) {
     else {
       const c = p.champion;
       body = `<div class="tm-rank"><b>${esc(p.rank)}</b>${p.lp != null ? `<span class="num"> · ${p.lp} LP</span>` : ""}</div>
-        <div class="tm-line num">Saison : <b class="${wrClass(p.winrate)}">${pct(p.winrate, 0)}</b> sur ${int(p.games)} parties</div>
+        ${p.games ? `<div class="tm-line num">Saison : <b class="${wrClass(p.winrate)}">${pct(p.winrate, 0)}</b> sur ${int(p.games)} parties</div>` : ""}
         <div class="tm-line num">${esc(champ(p.championId)?.name || "Ce champion")} : ${c ? `<b class="${wrClass(c.winrate)}">${pct(c.winrate, 0)}</b> sur ${int(c.games)} · KDA ${c.kda}` : "aucune partie classée"}</div>
         <div class="tags">${p.tags.map((t) => `<span class="tag ${t.kind}">${esc(t.text)}</span>`).join("")}</div>
         <div class="tm-mains">${p.mains.map((id) => img("champion", id, "", tipAttr("champion", id))).join("")}</div>`;
     }
-    return `<article class="tm-card${p.isMe ? " me" : ""}">
+    return `<article class="tm-card${p.isMe ? " me" : ""}${p.isOpponent ? " opp" : ""}">
       <header class="tm-head">${p.championId ? img("champion", p.championId, "tm-champ") : ""}
         <div class="tm-id"><span class="tm-name">${name}<small>#${tag}</small></span>
-          <span class="tm-role">${role ? roleIcon(role) + (ROLE_LABEL[role] || "") : ""}${p.isMe ? " · toi" : ""}</span></div></header>
+          <span class="tm-role">${role ? roleIcon(role) + (ROLE_LABEL[role] || "") : ""}${p.isMe ? " · toi" : p.isOpponent ? " · en face" : ""}</span></div></header>
       ${body}</article>`;
-  }).join("");
-  const waiting = team.status === "loading" && !team.players.length
-    ? '<p class="cp-msg"><span class="loading">En attente du chargement de la partie…</span></p>' : "";
-  const none = team.status === "unavailable" ? '<p class="cp-msg dim">Les infos de la partie ne sont pas disponibles.</p>' : "";
-  return `<section class="section team-view"><div class="section-head"><h2 class="section-title">Ton équipe</h2>
-    <span class="section-note">Profils OP.GG · classé solo, saison en cours</span></div>${waiting}${none}<div class="tm-grid">${cards}</div></section>`;
+  }
+}
+
+const ADVANTAGE = { EVEN: ["équilibrée", ""], ADVANTAGE: ["à ton avantage", "good"], DISADVANTAGE: ["à son avantage", "bad"],
+                    STRONG: ["à ton avantage", "good"], WEAK: ["à son avantage", "bad"], EASY: ["à ton avantage", "good"], HARD: ["à son avantage", "bad"] };
+
+/** Mon vis-à-vis : son profil, ses dernières parties et la lecture du duel par OP.GG. */
+function opponentHtml(o) {
+  const name = esc(o.riotId.split("#")[0]);
+  const cname = esc(champ(o.championId)?.name || "son champion");
+  let profile = '<p class="cp-msg"><span class="loading">Profil OP.GG…</span></p>';
+  if (o.status === "error") profile = '<p class="cp-msg dim">Profil introuvable sur OP.GG</p>';
+  else if (o.status === "ok") {
+    const c = o.champion;
+    profile = `<div class="tm-rank"><b>${esc(o.rank)}</b>${o.lp != null ? `<span class="num"> · ${o.lp} LP</span>` : ""}</div>
+      ${o.games ? `<div class="tm-line num">Saison : <b class="${wrClass(o.winrate)}">${pct(o.winrate, 0)}</b> sur ${int(o.games)} parties</div>` : ""}
+      <div class="tm-line num">${cname} : ${c ? `<b class="${wrClass(c.winrate)}">${pct(c.winrate, 0)}</b> sur ${int(c.games)} · KDA ${c.kda}` : "aucune partie classée"}</div>
+      <div class="tags">${o.tags.map((t) => `<span class="tag ${t.kind}">${esc(t.text)}</span>`).join("")}</div>`;
+  }
+  const f = o.form;
+  const form = !f ? (o.status === "ok" ? '<p class="cp-msg dim">Historique indisponible</p>' : "")
+    : `<div class="form-dots" aria-label="${f.wins} victoires sur ${f.games} parties">${f.results.map((w) => `<span class="${w ? "w" : "l"}">${w ? "V" : "D"}</span>`).join("")}</div>
+      <div class="tm-line num"><b class="${wrClass(f.wins / f.games)}">${f.wins} V – ${f.games - f.wins} D</b> · KDA ${f.kda}</div>
+      <div class="tm-line num">${f.onChampion ? `${f.onChampion} partie${f.onChampion > 1 ? "s" : ""} sur ${cname} récemment` : `Pas joué ${cname} récemment`}</div>
+      ${f.streak.count >= 3 ? `<span class="tag ${f.streak.win ? "bad" : "good"}">${f.streak.count} ${f.streak.win ? "victoires" : "défaites"} de suite</span>` : ""}`;
+  const m = o.matchup;
+  const adv = (v) => { const [t, k] = ADVANTAGE[v] || [String(v || "").toLowerCase() || "—", ""]; return `<b class="${k}">${esc(t)}</b>`; };
+  const duel = !m ? '<p class="cp-msg dim">Pas de lecture du duel pour l\'instant.</p>'
+    : `<div class="tm-line">Lane : ${adv(m.lane)}</div><div class="tm-line">Solo kills : ${adv(m.soloKill)}</div>
+      ${m.tip ? `<blockquote class="duel-tip" lang="en">${esc(m.tip)}</blockquote>` : ""}`;
+  return `<section class="section opp-view"><div class="section-head"><h2 class="section-title">Ton vis-à-vis</h2>
+    <span class="section-note">${name} · ${cname}</span></div>
+    <div class="opp-grid"><div class="opp-col"><header class="tm-head">${o.championId ? img("champion", o.championId, "tm-champ") : ""}
+      <div class="tm-id"><span class="tm-name">${name}<small>#${esc(o.riotId.split("#")[1] || "")}</small></span>
+      <span class="tm-role">${cname}</span></div></header>${profile}</div>
+    <div class="opp-col"><h3>Dernières parties</h3>${form}</div>
+    <div class="opp-col"><h3>Le duel selon OP.GG</h3>${duel}</div></div></section>`;
 }
 
 function counterHtml(cp, cur) {

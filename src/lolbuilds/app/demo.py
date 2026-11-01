@@ -84,8 +84,9 @@ def make_demo_builds(static: StaticData, runes: list[dict[str, Any]], cache: Bui
         cache.save(build)
 
 
-# Cycle de la démo (secondes) : prépick, mon ban, tour des autres, mon pick (Ahri survolée), Ahri verrouillée.
-DEMO_STEPS = [("planning", 8), ("ban", 12), ("wait", 6), ("pick", 10), ("locked", 20)]
+# Cycle de la démo (secondes) : prépick (rien puis Ahri déclarée), mon ban, tour des autres, mon pick (Ahri survolée),
+# Ahri verrouillée, puis la partie (joueurs fictifs).
+DEMO_STEPS = [("empty", 5), ("planning", 6), ("ban", 12), ("wait", 6), ("pick", 10), ("locked", 15), ("ingame", 20)]
 # Bans suggérés affichés pendant le tour de ban de la démo (pas d'appel OP.GG en démo).
 DEMO_BANS = [  # (championId, winrate du champion contre Ahri, parties)
     (238, 0.531, 6120), (7, 0.528, 4380), (55, 0.524, 3950), (105, 0.519, 4210), (134, 0.512, 7990), (517, 0.508, 2870),
@@ -106,12 +107,13 @@ def demo_step(now: float, start: float) -> tuple[str, float]:
 def demo_session(me: int, phase_ends: float, step: str = "locked") -> dict[str, Any]:
     total = dict(DEMO_STEPS)[step] * 1000
     picked = me if step == "locked" else 0
-    intent = 0 if step == "locked" else me  # Ahri déclarée dès le début, comme dans le client
+    intent = 0 if step in ("locked", "empty") else me  # Ahri déclarée pendant le prépick, comme dans le client
+    planning = step in ("empty", "planning")
     allies = [(1, 86, "top"), (2, 64, "jungle"), (3, picked, "middle"), (4, 222, "bottom"), (5, 0, "utility")]
     mine = [
         # Comme le vrai client : pendant le prépick, le ban est déjà marqué « en cours ».
-        {"id": 3, "actorCellId": 3, "type": "ban", "championId": 0 if step in ("planning", "ban") else 7,
-         "completed": step not in ("planning", "ban"), "isInProgress": step in ("planning", "ban"), "isAllyAction": True},
+        {"id": 3, "actorCellId": 3, "type": "ban", "championId": 0 if planning or step == "ban" else 7,
+         "completed": not planning and step != "ban", "isInProgress": planning or step == "ban", "isAllyAction": True},
         {"id": 13, "actorCellId": 3, "type": "pick", "championId": picked or intent,
          "completed": step == "locked", "isInProgress": step == "pick", "isAllyAction": True},
     ]
@@ -122,7 +124,8 @@ def demo_session(me: int, phase_ends: float, step: str = "locked") -> dict[str, 
              "assignedPosition": pos, "spell1Id": 4, "spell2Id": 14}
             for c, ch, pos in allies
         ],
-        "theirTeam": [{"cellId": c, "championId": ch} for c, ch in [(6, 122), (7, 121), (8, 0), (9, 51), (10, 89)]],
+        "theirTeam": [{"cellId": c, "championId": ch}
+                      for c, ch in [(6, 122), (7, 121), (8, 134 if step == "locked" else 0), (9, 51), (10, 89)]],
         "actions": [[
             {"type": "ban", "completed": True, "championId": 157, "isAllyAction": True},
             {"type": "ban", "completed": True, "championId": 555, "isAllyAction": True},
@@ -130,10 +133,42 @@ def demo_session(me: int, phase_ends: float, step: str = "locked") -> dict[str, 
             {"type": "ban", "completed": True, "championId": 875, "isAllyAction": False},
             *mine,
         ]],
-        "timer": {"phase": "PLANNING" if step == "planning" else "BAN_PICK",
+        "timer": {"phase": "PLANNING" if planning else "BAN_PICK",
                   "adjustedTimeLeftInPhase": max(0, int((phase_ends - time.time()) * 1000)),
                   "totalTimeInPhase": total},
     }
+
+
+def _player(name: str, champion: int, position: str, rank: str | None, lp: int | None, games: int, winrate: float,
+            champ: tuple[int, float, float] | None, tags: list[tuple[str, str]], **extra: Any) -> dict[str, Any]:
+    return {"riotId": name, "championId": champion, "position": position, "status": "ok" if rank else "loading",
+            "isMe": False, "rank": rank, "lp": lp, "games": games, "winrate": winrate,
+            "champion": {"games": champ[0], "winrate": champ[1], "kda": champ[2]} if champ else None,
+            "mains": [champion], "tags": [{"text": t, "kind": k} for t, k in tags], **extra}
+
+
+def demo_team() -> dict[str, Any]:
+    """Joueurs fictifs de la partie (aucun appel OP.GG en démo)."""
+    allies = [
+        _player("TopDiff#EUW", 86, "top", "Or II", 47, 212, 0.53, (88, 0.57, 2.9), [("Main Garen", "good")]),
+        _player("JungleKing#EUW", 64, "jungle", "Platine IV", 12, 340, 0.47, (6, 0.33, 1.8), [("Saison difficile", "bad")]),
+        _player("Miitos#EUW", 103, "middle", "Émeraude III", 63, 156, 0.55, (61, 0.59, 3.4), [("En série de victoires", "good")], isMe=True),
+        _player("AdcEnjoyer#EUW", 222, "bottom", "Non classé", None, 0, 0.0, None, [("Peu joué Jinx cette saison", "bad")]),
+        _player("Hookline#EUW", 412, "utility", None, None, 0, 0.0, None, []),
+    ]
+    enemies = [
+        _player("Sangsue#EUW", 122, "top", "Or I", 80, 190, 0.51, (120, 0.55, 2.4), [("Main Darius", "good")]),
+        _player("Insecte#EUW", 121, "jungle", "Platine III", 30, 260, 0.52, (40, 0.5, 3.1), []),
+        _player("SphereNoire#EUW", 134, "middle", "Émeraude IV", 22, 301, 0.54, (95, 0.58, 3.8),
+                [("Main Syndra", "good"), ("58 % sur Syndra", "good")], isOpponent=True,
+                form={"games": 9, "wins": 6, "results": [True, True, True, False, True, False, True, False, True],
+                      "kda": 3.6, "onChampion": 7, "streak": {"win": True, "count": 3}},
+                matchup={"lane": "EVEN", "soloKill": "DISADVANTAGE",
+                         "tip": "Dodging Syndra's Scatter the Weak (E) is difficult before level 6. After level 6, use Spirit Rush (R) to dodge and kill her."}),
+        _player("Piltie#EUW", 51, "bottom", "Or III", 5, 150, 0.49, (30, 0.47, 2.2), []),
+        _player("Aube#EUW", 89, "utility", "Platine II", 61, 220, 0.56, (70, 0.6, 3.9), [("Vétéran du rang", "info")]),
+    ]
+    return {"status": "ok", "players": allies, "enemies": enemies}
 
 
 def demo_bans(me: int) -> dict[str, Any]:
@@ -186,6 +221,13 @@ async def start_demo(ctrl: Any) -> None:
         start = time.time()
         while True:
             step, ends = demo_step(time.time(), start)
+            if step == "ingame":
+                ctrl.state["phase"] = "InProgress"
+                ctrl.state["team"] = demo_team()
+                await ctrl.on_session(None)  # le build verrouillé reste affiché
+                await asyncio.sleep(1)
+                continue
+            ctrl.state["phase"], ctrl.state["team"] = "ChampSelect", None
             ctrl.state["banSuggestions"] = demo_bans(ahri) if step in ("planning", "ban") else None
             await ctrl.on_session(demo_session(ahri, ends, step))
             await asyncio.sleep(1)

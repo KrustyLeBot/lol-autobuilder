@@ -28,7 +28,7 @@ from .cache import BuildCache
 from .config import Config
 from .ddragon import DataDragon, StaticData
 from .models import Build
-from .players import PROFILE_FIELDS
+from .players import MATCH_FIELDS, PROFILE_FIELDS
 from .sources import BuildSourceError
 from .sources.opgg import OpggSource
 
@@ -58,6 +58,7 @@ class LiveBuilds:
         self._lock = threading.Lock()  # le client OP.GG n'est pas partagé entre threads
         self._roles: dict[str, dict[str, float]] | None = None
         self._profiles: dict[tuple[str, str, str], Any] = {}
+        self._matches: dict[tuple[str, str, str], Any] = {}
         self._roles_date = ""
 
     # ------------------------------------------------------------------ données statiques
@@ -180,13 +181,22 @@ class LiveBuilds:
             return cached["variants"]
         try:
             with self._lock:
-                variants = self.source.fetch_matchup(champion, role, opponent)
+                variants, insight = self.source.fetch_matchup(champion, role, opponent, insight=True)
         except BuildSourceError as exc:
             log.warning("OP.GG : matchup %s vs %s indisponible (%s)", champion, opponent, exc)
             return cached["variants"] if cached else []
-        _write(path, {"date": today, "variants": variants})
+        _write(path, {"date": today, "variants": variants, "insight": insight})
         log.info("OP.GG : %s %s vs %s, %d propositions", champion, role, opponent, len(variants))
         return variants
+
+    def matchup_insight(self, champion: str, role: str, opponent: str) -> dict[str, str] | None:
+        """Lecture du duel (avantage, conseil) gardée avec les propositions du matchup."""
+        path = self.dir / "matchups" / f"{champion}_{role}_vs_{opponent}.json"
+        cached = _read(path)
+        if not cached or cached.get("date") != date.today().isoformat() or "insight" not in cached:
+            self.matchup(champion, role, opponent)
+            cached = _read(path)
+        return (cached or {}).get("insight")
 
     def tier_list(self, role: str) -> list[dict[str, Any]]:
         """Tier list OP.GG du rôle, gardée pour la journée."""
@@ -231,6 +241,17 @@ class LiveBuilds:
                     "desired_output_fields": PROFILE_FIELDS,
                 })
         return self._profiles[key]
+
+    def player_matches(self, game_name: str, tag: str, region: str) -> Any:
+        """Dernières parties d'un joueur (gardées en mémoire le temps de la session de l'appli)."""
+        key = (game_name.lower(), tag.lower(), region)
+        if key not in self._matches:
+            with self._lock:
+                self._matches[key] = self.source.client.call("lol_list_summoner_matches", {
+                    "game_name": game_name, "tag_line": tag, "region": region, "lang": "en_US", "limit": 10,
+                    "desired_output_fields": MATCH_FIELDS,
+                })
+        return self._matches[key]
 
     def close(self) -> None:
         if self._source:

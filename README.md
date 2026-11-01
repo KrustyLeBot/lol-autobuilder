@@ -9,9 +9,10 @@ Une alternative légère à Blitz ou Porofessor, centrée sur une seule chose : 
 - **Build automatique** : dès que tu verrouilles ton champion, la page de runes, les sorts (Flash sur D ou F, au choix) et l'item set sont envoyés au client.
 - **Builds contre ton adversaire** : quand ton adversaire de lane est connu, lolbuilds propose les runes et les items qui gagnent le plus dans ce duel précis.
 - **Bons picks** : si ton adversaire a choisi avant toi, tu vois les champions qui le battent, parmi ceux que tu possèdes.
-- **Bans suggérés** : pendant ton tour de ban, les champions les plus dangereux pour toi ou les plus forts de ta lane. Un clic sélectionne le champion dans ton ban, **Bannir** le verrouille (ça ne touche jamais à ton pick).
+- **Bans suggérés** : pendant ton tour de ban, les champions les plus dangereux pour toi ou les plus forts de ta lane. Un clic sur l'un d'eux le bannit directement (ça ne touche jamais à ton pick).
 - **Alerte quand c'est ton tour** : la fenêtre repasse devant et un son est joué au moment de bannir ou de choisir.
-- **Ton équipe en partie** : une fois la partie chargée, le rang, le winrate de la saison et les résultats de chaque allié sur son champion (OP.GG), avec des indications : série de victoires, main du champion, peu d'expérience dessus…
+- **Les joueurs de la partie** : une fois la partie chargée, le rang, le winrate de la saison et les résultats de chaque joueur (ton équipe et l'équipe adverse) sur son champion (OP.GG), avec des indications : série de victoires, main du champion, peu d'expérience dessus…
+- **Ton vis-à-vis** : ses dernières parties (victoires, KDA, combien sur son champion) et la lecture du duel par OP.GG (avantage en lane, en solo kills, conseil). Le build de ton champion reste affiché pendant la partie.
 - **ARAM** : en ARAM, lolbuilds applique un build issu des **statistiques d'ARAM** d'OP.GG (runes, sorts, items, item set pour l'Abîme hurlant), et plus celui d'une lane de la faille.
 - **Build atypique** : dans les autres modes, le build ARAM du champion est proposé en dernier, avec l'étiquette « Atypique : build ARAM » (jamais appliqué par défaut). Il est ignoré s'il ressemble déjà à une proposition.
 - **Thèmes** aux couleurs de Runeterra : Hextech, Noxus, Piltover et Ionia.

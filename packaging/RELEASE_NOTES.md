@@ -1,17 +1,18 @@
 ## Nouveautés
 
-- **ARAM** : en ARAM, lolbuilds applique maintenant un build issu des statistiques d'ARAM d'OP.GG (runes, sorts, items et item set pour l'Abîme hurlant) au lieu d'un build de lane de la faille.
-- **Build atypique** : dans les autres modes, le build ARAM du champion est proposé en dernier, étiqueté « Atypique : build ARAM ». Il n'est jamais appliqué par défaut.
-- **Sorts d'invocateur** : un réglage permet d'appliquer le build et les runes sans jamais toucher à tes sorts (Réglages › Champ select).
-- **Builds en cache** : un build ouvert depuis la bibliothèque s'affiche dans la bibliothèque et ne remplace plus ta sélection de champion en cours (tu vois toujours ton champ select et ton équipe).
-- **Tout télécharger** récupère aussi les builds ARAM. Pour tout désactiver : `aram = false` dans `config.toml` (section `[opgg]`).
+- **Nouvelle mise en page, la même à chaque étape** :
+  - une **barre d'étape** reste tout en haut : ce qui se passe (« À toi de bannir », « Prépick »…), le fil Prépick › Bans › Picks › Finalisation › En jeu et le compte à rebours ;
+  - **à gauche**, le portrait de ton champion et ses builds en lignes compactes (touches 1 à 3) ;
+  - **à droite**, la draft, les suggestions de l'étape (bans pendant ton ban, bons picks avant ton pick), puis les runes, les items, les sorts et **l'ordre des compétences**.
+- **Pendant la partie**, l'écran garde ton build et ajoute en dessous :
+  - **ton équipe** (comme avant) ;
+  - **ton vis-à-vis** : ses dernières parties (victoires, KDA, nombre de parties sur son champion, série en cours) et la lecture du duel par OP.GG (avantage en lane, en solo kills, conseil contre son champion, en anglais) ;
+  - **l'équipe adverse**, avec le rang et les résultats de chaque joueur.
+- Tant qu'aucun champion n'est survolé, le portrait affiche l'emblème de ton thème.
 
 ## Corrections
 
-- **Item set refusé (413 « Content length is too large »)** : les requêtes vers le client sont maintenant envoyées en JSON compact (environ un quart plus léger), et si le client refuse encore l'item set parce que ceux du compte sont trop volumineux, l'appli l'explique (nombre et poids de tes item sets) au lieu d'une simple croix rouge.
-- **Alerte de ton tour** : une erreur dans la page empêchait le son de retentir quand c'était à toi de bannir ou de choisir (avec « Fenêtre au premier plan » activé). Corrigé.
-- **Ban en un clic** : pendant ton tour de ban, un clic sur un champion des bans suggérés le bannit directement (sélection et verrouillage en une fois, sans bouton de validation). Le verrouillage pouvait ne pas aboutir dans la version précédente. Ça ne touche jamais à ton pick, ni au prépick.
-- **Journal** : chaque tentative de ban est notée dans `logs\app.log` avec la réponse du client, pour pouvoir diagnostiquer un refus.
+- Un joueur non classé n'affiche plus « Saison : 0 % sur 0 parties ».
 
 ## Mettre à jour
 

@@ -15,7 +15,7 @@ from lolbuilds.config import Config
 from lolbuilds.ddragon import ChampionCatalog, ItemCatalog, StaticData
 from lolbuilds.live import LiveBuilds, guess_lanes
 from lolbuilds.sources import BuildSourceError
-from lolbuilds.sources.opgg import build_from_analysis, counters_from_guide, matchup_variants, parse_toon
+from lolbuilds.sources.opgg import build_from_analysis, counters_from_guide, matchup_insight, matchup_variants, parse_toon
 from conftest import FIXTURES, make_build
 from test_applier import FakeLcu, session
 
@@ -104,11 +104,12 @@ class FakeSource:
             build.perks[0] = self.aram_perk
         return build
 
-    def fetch_matchup(self, champion, role, opponent):
+    def fetch_matchup(self, champion, role, opponent, insight=False):
         self.calls.append(f"matchup {champion} {opponent}")
         if self.fail:
             raise BuildSourceError("hors ligne")
-        return matchup_variants(guide(), opponent=opponent)
+        variants = matchup_variants(guide(), opponent=opponent)
+        return (variants, matchup_insight(guide())) if insight else variants
 
     def fetch_counters(self, enemy, role):
         self.calls.append(f"counters {enemy} {role}")
@@ -573,3 +574,79 @@ def test_library_peek_lists_the_aram_build_as_a_tab(ctrl):
     ctrl.cache.save(make_build(role="aram", name="Ahri ARAM"))
     peek = ctrl.peek_build(103, "aram")
     assert peek["mode"] == "aram" and peek["roles"] == ["middle", "aram"]
+
+
+# --------------------------------------------------------------------------- partie en cours : adversaires
+
+MATCHES = {"data": {"game_history": [
+    {"participants": [{"champion_id": 134, "stats": {"kill": 2, "death": 6, "assist": 1, "result": "LOSE"}}]},
+    {"participants": [{"champion_id": 134, "stats": {"kill": 1, "death": 4, "assist": 3, "result": "LOSE"}}]},
+    {"participants": [{"champion_id": 61, "stats": {"kill": 0, "death": 0, "assist": 0, "result": "UNKNOWN"}}]},  # remake
+    {"participants": [{"champion_id": 61, "stats": {"kill": 9, "death": 2, "assist": 8, "result": "WIN"}}]},
+]}}
+
+
+def test_recent_form():
+    from lolbuilds.players import recent_form
+
+    form = recent_form(MATCHES, 134)
+    assert form["games"] == 3 and form["wins"] == 1 and form["results"] == [False, False, True]
+    assert form["onChampion"] == 2 and form["streak"] == {"win": False, "count": 2}
+    assert form["kda"] == round((2 + 1 + 1 + 3 + 9 + 8) / 12, 1)
+    assert recent_form({}, 134) is None
+
+
+def test_matchup_insight():
+    from lolbuilds.sources.opgg import matchup_insight
+
+    guide = {"data": {"lane_advantage_champion": "even", "lane_solo_kill_advantage_champion": "ADVANTAGE",
+                      "opponent_champion_tip": " Dodge her E. "}}
+    assert matchup_insight(guide) == {"lane": "EVEN", "soloKill": "ADVANTAGE", "tip": "Dodge her E."}
+    assert matchup_insight(None) == {"lane": "", "soloKill": "", "tip": ""}
+
+
+def test_enemies_and_lane_opponent_loaded(ctrl, monkeypatch):
+    from lolbuilds import players
+
+    everyone = [
+        {"riotIdGameName": "Moi", "riotIdTagLine": "EUW", "team": "ORDER", "position": "MIDDLE",
+         "rawChampionName": "game_character_displayname_Ahri"},
+        {"riotIdGameName": "Haut", "riotIdTagLine": "1", "team": "CHAOS", "position": "TOP",
+         "rawChampionName": "game_character_displayname_Thresh"},
+        {"riotIdGameName": "Ennemi", "riotIdTagLine": "1", "team": "CHAOS", "position": "MIDDLE",
+         "rawChampionName": "game_character_displayname_Syndra"},
+    ]
+    monkeypatch.setattr(players, "live_players", lambda: ("Moi#EUW", everyone))
+    monkeypatch.setattr(ctrl.live, "player_profile", lambda name, tag, region: PROFILE)
+    monkeypatch.setattr(ctrl.live, "player_matches", lambda name, tag, region: MATCHES)
+    ctrl.state["current"] = {"championId": 103, "champion": "Ahri", "role": "middle", "locked": True, "opponent": None}
+
+    async def scenario():
+        ctrl.on_phase("InProgress")
+        await ctrl._team_task
+
+    asyncio.run(scenario())
+    team = ctrl.state["team"]
+    assert [p["riotId"] for p in team["enemies"]] == ["Haut#1", "Ennemi#1"]
+    opp = team["enemies"][1]
+    assert opp["isOpponent"] and opp["status"] == "ok" and opp["form"]["onChampion"] == 2
+    assert set(opp["matchup"]) == {"lane", "soloKill", "tip"}
+    assert "isOpponent" not in team["enemies"][0] and "form" not in team["enemies"][0]
+
+
+def test_locked_build_kept_during_game(ctrl):
+    asyncio.run(ctrl.on_session(session(103)))
+    ctrl.state["current"]["locked"] = True
+    ctrl.state["phase"] = "InProgress"
+    asyncio.run(ctrl.on_session(None))  # fin du champ select
+    assert ctrl.state["champSelect"] is None and ctrl.state["current"]["championId"] == 103
+    ctrl.state["phase"] = "Lobby"
+    ctrl.on_phase("Lobby")
+    assert ctrl.state["current"] is None
+
+
+def test_hovered_build_dropped_when_champ_select_ends(ctrl):
+    asyncio.run(ctrl.on_session(session(103)))
+    ctrl.state["current"]["locked"] = False  # esquive : rien n'était verrouillé
+    asyncio.run(ctrl.on_session(None))
+    assert ctrl.state["current"] is None

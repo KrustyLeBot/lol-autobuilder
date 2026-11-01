@@ -384,6 +384,16 @@ def matchup_variants(guide: Any, *, opponent: str, items: ItemCatalog | None = N
     return variants
 
 
+def matchup_insight(guide: Any) -> dict[str, str]:
+    """Lecture du duel par OP.GG (point de vue de `my_champion`) : avantage en lane, en solo kill, conseil."""
+    data = (guide or {}).get("data") or {}
+    return {
+        "lane": str(data.get("lane_advantage_champion") or "").upper(),
+        "soloKill": str(data.get("lane_solo_kill_advantage_champion") or "").upper(),
+        "tip": str(data.get("opponent_champion_tip") or "").strip(),
+    }
+
+
 def tier_list(meta: Any, champions: ChampionCatalog, role: str) -> list[dict[str, Any]]:
     """Champions d'un rôle classés par tier OP.GG (1 = OP) puis rang."""
     entries = (((meta or {}).get("data") or {}).get("positions") or {}).get(TO_OPGG.get(role, ""), []) or []
@@ -495,8 +505,10 @@ class OpggSource(BuildSource):
         return build_from_analysis(analysis, champion=champion, champion_id=champion_id, role=ARAM,
                                    patch=self.static.patch)
 
-    def fetch_matchup(self, champion: str, role: str, opponent: str) -> list[dict[str, Any]]:
-        """Propositions de `champion` contre `opponent` (ids Data Dragon) dans le rôle donné."""
+    def fetch_matchup(self, champion: str, role: str, opponent: str, insight: bool = False) -> Any:
+        """Propositions de `champion` contre `opponent` (ids Data Dragon) dans le rôle donné.
+
+        `insight` : renvoie (propositions, lecture du duel), voir `matchup_insight`."""
         if role not in TO_OPGG:
             raise BuildSourceError(f"rôle inconnu : {role}")
         names = self.static.champions.names
@@ -505,7 +517,8 @@ class OpggSource(BuildSource):
             "my_champion": opgg_name(names.get(champion, champion)),
             "opponent_champion": opgg_name(names.get(opponent, opponent)),
         })
-        return matchup_variants(guide, opponent=names.get(opponent, opponent), items=self.static.items)
+        variants = matchup_variants(guide, opponent=names.get(opponent, opponent), items=self.static.items)
+        return (variants, matchup_insight(guide)) if insight else variants
 
     def fetch_tier_list(self, role: str) -> list[dict[str, Any]]:
         """Tier list OP.GG du rôle (les champions les plus forts en premier)."""
