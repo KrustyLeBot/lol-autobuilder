@@ -693,3 +693,4 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
 .lib-detail { display: grid; gap: 18px; }
 .lib-back { justify-self: start; }
 .lib-head[hidden], .lib-table[hidden], .lib-detail[hidden] { display: none; }
+.applied-problem { margin-top: 6px; padding: 8px 12px; font-size: 12px; line-height: 1.5; color: var(--loss); background: color-mix(in srgb, var(--loss) 10%, transparent); border: 1px solid color-mix(in srgb, var(--loss) 35%, transparent); }

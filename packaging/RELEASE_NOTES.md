@@ -8,6 +8,7 @@
 
 ## Corrections
 
+- **Item set refusé (413 « Content length is too large »)** : les requêtes vers le client sont maintenant envoyées en JSON compact (environ un quart plus léger), et si le client refuse encore l'item set parce que ceux du compte sont trop volumineux, l'appli l'explique (nombre et poids de tes item sets) au lieu d'une simple croix rouge.
 - **Alerte de ton tour** : une erreur dans la page empêchait le son de retentir quand c'était à toi de bannir ou de choisir (avec « Fenêtre au premier plan » activé). Corrigé.
 
 ## Mettre à jour

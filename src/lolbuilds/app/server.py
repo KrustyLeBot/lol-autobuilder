@@ -391,10 +391,12 @@ class Controller:
         self.state["busy"] = True
         self.state["selection"] = {"variant": variant, "spells": spells_option}
         await self.broadcast()
-        steps = await self.applier().apply(self.lcu, build)
+        applier = self.applier()
+        steps = await applier.apply(self.lcu, build)
         self._applied_for = self._apply_key()
         self.state["busy"] = False
-        self.state["applied"] = {"variant": variant, "spells": spells_option, "steps": steps, "auto": auto, "at": time.time()}
+        self.state["applied"] = {"variant": variant, "spells": spells_option, "steps": steps, "auto": auto, "at": time.time(),
+                                 "problems": applier.problems}
         if not auto:
             self._manual = True
             extra = len(self._matchup_variants())

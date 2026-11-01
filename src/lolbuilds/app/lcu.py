@@ -55,6 +55,12 @@ def find_credentials() -> Credentials | None:
     return None
 
 
+def encode_body(body: Any) -> bytes:
+    """JSON compact en UTF-8 : le client refuse les requêtes trop volumineuses (413), et `json=` d'aiohttp ajoute des
+    espaces et écrit chaque accent en \\uXXXX (6 octets au lieu de 2)."""
+    return json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
 class LcuConnection:
     """Requêtes REST + flux d'événements WebSocket sur le client local."""
 
@@ -75,7 +81,10 @@ class LcuConnection:
             await self._ws_session.close()
 
     async def request(self, method: str, path: str, body: Any = None) -> tuple[int, Any]:
-        async with self.session.request(method, self.base + path, json=body) as resp:
+        kwargs: dict[str, Any] = {}
+        if body is not None:
+            kwargs = {"data": encode_body(body), "headers": {"Content-Type": "application/json"}}
+        async with self.session.request(method, self.base + path, **kwargs) as resp:
             try:
                 data = await resp.json(content_type=None)
             except (json.JSONDecodeError, aiohttp.ContentTypeError):

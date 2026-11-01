@@ -108,3 +108,30 @@ def test_item_set_aborts_if_read_fails():
     steps = asyncio.run(BuildApplier(ChampSelectSettings(apply_runes=False, apply_spells=False)).apply(lcu, make_build()))
     assert steps == {"items": False}
     assert not any(m == "PUT" for m, _, _ in lcu.calls)
+
+
+def test_item_set_too_large_is_explained(caplog):
+    """Le client répond 413 quand les item sets du compte sont trop volumineux : la raison est donnée à l'utilisateur."""
+    class TooLarge(FakeLcu):
+        async def request(self, method, path, body=None):
+            if method == "PUT":
+                self.calls.append((method, path, body))
+                return 413, {"errorCode": "BAD_REQUEST_HEADERS", "httpStatus": 413, "message": "Content length is too large"}
+            return await super().request(method, path, body)
+
+    lcu = TooLarge(sets={"accountId": 1, "timestamp": 0, "itemSets": [{"title": f"Set {i}", "uid": str(i), "blocks": []} for i in range(50)]})
+    applier = BuildApplier(ChampSelectSettings(apply_runes=False, apply_spells=False))
+    steps = asyncio.run(applier.apply(lcu, make_build()))
+    assert steps == {"items": False}
+    assert "413" not in applier.problems["items"] and "50 item sets" in applier.problems["items"]
+    assert "Supprime" in applier.problems["items"]
+    applier2 = BuildApplier(ChampSelectSettings(apply_runes=False, apply_spells=False))
+    asyncio.run(applier2.apply(FakeLcu(), make_build()))
+    assert applier2.problems == {}  # aucune erreur : rien à expliquer
+
+
+def test_lcu_body_is_compact_utf8():
+    from lolbuilds.app.lcu import encode_body
+
+    raw = encode_body({"title": "Départ", "n": [1, 2]})
+    assert raw == '{"title":"Départ","n":[1,2]}'.encode("utf-8")

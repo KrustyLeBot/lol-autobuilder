@@ -564,7 +564,8 @@ function appliedBarHtml(applied, variants) {
   const step = (ok, label) => ok === undefined ? "" : `<span class="step ${ok ? "ok" : "ko"}">${ok ? "✓" : "✕"} <span>${label}</span></span>`;
   const ks = perk(variants[applied.variant]?.perks?.[0]);
   return `<div class="applied-bar">${step(applied.steps.runes, "Page de runes")}${step(applied.steps.spells, "Sorts d'invocateur")}${step(applied.steps.items, "Item set")}
-    <span class="spacer"></span><span>${applied.auto ? "Appliqué automatiquement" : "Appliqué"} · ${esc(ks?.name || "")}</span></div>`;
+    <span class="spacer"></span><span>${applied.auto ? "Appliqué automatiquement" : "Appliqué"} · ${esc(ks?.name || "")}</span></div>
+    ${Object.values(applied.problems || {}).map((t) => `<div class="applied-problem">${esc(t)}</div>`).join("")}`;
 }
 
 function runesHtml(v) {
