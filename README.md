@@ -42,7 +42,7 @@ Tu préfères ne rien installer ? Télécharge **`lolbuilds-portable-….exe`** 
 
 Le premier champion de la journée met une à deux secondes à arriver : lolbuilds interroge OP.GG, puis garde le résultat jusqu'au lendemain.
 
-**Astuce** : l'épingle en haut à droite garde la fenêtre au-dessus du client pendant le champ select.
+**Astuce** : l'épingle en haut à droite garde la fenêtre au-dessus du client pendant le champ select. Si tu joues en plein écran, le jeu garde toujours la priorité : l'épingle se met en retrait tant qu'il est au premier plan (et revient ensuite), la fenêtre ne lui vole pas le focus, et le son d'alerte retentit quand même.
 
 ## Réglages
 
@@ -52,6 +52,7 @@ Tout se règle dans **Réglages** (icône d'engrenage à gauche) :
 |---|---|
 | Application automatique | applique le meilleur build dès que ton champion est verrouillé |
 | Alertes | fenêtre au premier plan et son quand c'est ton tour de bannir ou de choisir ; un son au choix pour chaque moment |
+| Builds en cache | « Tout télécharger » prépare les builds de tous les champions d'un coup (quelques minutes) et indique la date de la dernière récupération |
 | Touche de Flash | Flash sur D, sur F, ou là où le build le met |
 | Thème | Hextech, Noxus, Piltover ou Ionia |
 | Mise à jour | indique ta version et installe la nouvelle en un clic quand elle sort |
@@ -67,6 +68,9 @@ La version portable se met à jour de la même façon : le nouvel exe est télé
 > Tu as la 0.1.0 ou le zip portable de la 0.2.1 ? Ils n'ont pas ce bouton (le zip ne démarrait pas toujours) : installe la dernière version une fois depuis la [page des téléchargements](https://github.com/Miitos/lol-autobuilder/releases/latest), les suivantes arriveront toutes seules.
 
 ## Questions fréquentes
+
+**Quand les builds sont-ils mis à jour ?**
+Un build est « à jour » pour la journée : le premier pick d'un champion dans la journée le redemande à OP.GG, puis il est gardé jusqu'au lendemain. Il n'y a pas de rafraîchissement en arrière-plan : « Tout télécharger » (Réglages) met à jour d'un coup tous les builds qui ne datent pas d'aujourd'hui, et ceux que tu joues se mettent à jour d'eux-mêmes. Si OP.GG ne répond pas, le dernier build connu est gardé. La date de chaque build est indiquée dans la bibliothèque (en gris si elle n'est pas d'aujourd'hui) et sous le build en champ select.
 
 **Est-ce que ça touche à mes pages de runes ?**
 lolbuilds crée ses propres pages, dont le nom commence par `[Auto]`, et ne supprime que celles-là. Si toutes tes pages sont occupées par tes pages personnelles, il n'en supprime aucune et te le signale. Même chose pour les item sets : les tiens ne sont jamais modifiés.

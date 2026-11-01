@@ -208,9 +208,28 @@ function renderSettings() {
       <span class="theme-name">${t.name}</span><span class="theme-tag">${t.tag}</span></button>`).join("");
   applyTheme(set.theme);
   renderUpdate();
+  renderBuilds();
 }
 
 /** Section « Mise à jour » : version installée, dernière release GitHub, bouton d'installation. */
+function renderBuilds() {
+  const p = state?.prefetch;
+  if (!p) return;
+  const last = state.lastPrefetch;
+  const running = p.status === "running";
+  const sub = {
+    idle: last ? `Dernière récupération : ${day(last)}` : "Aucun build en cache pour l'instant",
+    running: p.total ? `Téléchargement… ${p.done} / ${p.total}` : "Préparation du téléchargement…",
+    done: p.updated || p.failed
+      ? `Terminé : ${p.updated} mis à jour${p.failed ? `, ${p.failed} en échec (l'ancien build est conservé)` : ""}`
+      : "Tous les builds étaient déjà à jour aujourd'hui",
+    error: `Impossible : ${esc(p.error || "erreur")}`,
+  }[p.status] || "";
+  $("#bld-title").textContent = running ? "Téléchargement en cours" : "Builds en cache";
+  $("#bld-sub").innerHTML = `${sub}${last && p.status !== "idle" && !running ? ` · dernière récupération : ${day(last)}` : ""}`;
+  $("#bld-actions").innerHTML = `<button type="button" class="btn" data-prefetch${running ? " disabled" : ""}>Tout télécharger</button>`;
+}
+
 function renderUpdate() {
   const u = state?.update;
   if (!u) return;
@@ -603,7 +622,7 @@ function renderLibrary() {
   const today = new Date().toISOString().slice(0, 10);
   $("#lib-sub").textContent = library.length
     ? `${library.length} builds · patch ${library[0].patch} · clique sur une ligne pour voir les propositions`
-    : "Aucun build pour l'instant : lance le prefetch.";
+    : "Aucun build pour l'instant : ils s'ajoutent quand tu choisis un champion en champ select, ou télécharge-les tous dans Réglages.";
   $("#lib-roles").innerHTML = ROLE_ORDER.map((r) => `<button type="button" class="chip" data-librole="${r}" aria-pressed="${libRole === r}" title="${ROLE_LABEL[r]}" aria-label="${ROLE_LABEL[r]}">${roleIcon(r)}</button>`).join("");
   const header = `<div class="lib-row header"><span></span><span>Champion</span><span>Rôle</span><span>Winrate</span><span>Parties</span><span>Builds</span><span>Mis à jour</span></div>`;
   $("#lib-table").innerHTML = header + rows.map((r) => `
@@ -697,6 +716,7 @@ $("#view-settings").addEventListener("click", (e) => {
   if (theme) { applyTheme(theme.dataset.theme); post("/api/settings", { theme: theme.dataset.theme }); }
   const flash = e.target.closest("[data-setflash]");
   if (flash) post("/api/settings", { flashKey: flash.dataset.setflash });
+  if (e.target.closest("[data-prefetch]")) post("/api/prefetch", {});
   const upd = e.target.closest("[data-update]");
   if (upd) post(`/api/update/${upd.dataset.update}`, {});
 });

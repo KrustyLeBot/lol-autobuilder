@@ -127,6 +127,31 @@ class LiveBuilds:
         lanes = guess_lanes(enemies, self.roles())
         return next((champ for champ, role in lanes.items() if role == my_role), None)
 
+    # ------------------------------------------------------------------ téléchargement de tous les builds
+
+    def prefetch_all(self, progress: Any = None, force: bool = False) -> dict[str, int]:
+        """Télécharge les builds de tous les champions (ceux d'aujourd'hui sont gardés, sauf `force`).
+
+        `progress(done, total)` est appelée après chaque build. Une erreur sur un build ne l'arrête pas : l'ancien
+        fichier reste en place. Même logique que `python -m lolbuilds.prefetch`."""
+        from .prefetch import Outcome, refresh_one
+
+        today = date.today()
+        with self._lock:
+            targets = self.source.targets()
+        stale = [t for t in targets if force or not self.cache.is_fresh(t.champion, t.role, today)]
+        counts = {"total": len(targets), "fresh": len(targets) - len(stale), "updated": 0, "failed": 0}
+        if stale:
+            with self._lock:
+                self.source.prepare(stale)
+        for done, target in enumerate(stale, 1):
+            with self._lock:  # le champ select peut demander un build entre deux : il passe en priorité naturelle
+                outcome = refresh_one(self.cache, self.source, target, today, force=True)
+            counts["updated" if outcome is Outcome.UPDATED else "failed"] += 1
+            if progress:
+                progress(done, len(stale))
+        return counts
+
     # ------------------------------------------------------------------ builds
 
     def global_build(self, champion: str, role: str) -> Build | None:
