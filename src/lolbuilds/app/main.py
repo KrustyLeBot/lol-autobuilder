@@ -28,11 +28,32 @@ from .server import Controller, start_server
 log = logging.getLogger("lolbuilds.app")
 
 
+def _set_top_most(window: Any, on_top: bool) -> None:
+    """« Toujours au premier plan », exécuté sur le thread de la fenêtre.
+
+    `window.on_top = …` de pywebview modifie `TopMost` directement depuis le thread qui appelle (ici celui de
+    l'API JS), alors que WinForms n'accepte de toucher à une fenêtre que depuis son propre thread : l'appli
+    plantait au clic sur l'épingle. Les autres actions de pywebview (réduire, restaurer…) passent, elles,
+    par `Invoke`, comme ici."""
+    from System import Func, Type  # type: ignore[import-not-found]  # pythonnet : Windows seulement
+    from webview.platforms import winforms
+
+    form = winforms.BrowserView.instances.get(window.uid)
+    if form is None:
+        return
+
+    def apply() -> None:
+        form.TopMost = on_top
+
+    form.Invoke(Func[Type](apply))
+
+
 class WindowApi:
     """Méthodes appelables depuis la page (window.pywebview.api.*) pour la barre de titre maison."""
 
     def __init__(self) -> None:
         self._window: Any = None
+        self._pinned = False  # état suivi ici : on ne passe pas par `window.on_top` (voir _set_top_most)
 
     def minimize(self) -> None:
         self._window.minimize()
@@ -41,19 +62,26 @@ class WindowApi:
         self._window.destroy()
 
     def toggle_on_top(self) -> bool:
-        self._window.on_top = not self._window.on_top
-        return self._window.on_top
+        try:
+            _set_top_most(self._window, not self._pinned)
+        except Exception:  # noqa: BLE001  l'épingle ne doit jamais faire tomber l'appli
+            log.exception("Impossible de changer « toujours au premier plan »")
+            return self._pinned
+        self._pinned = not self._pinned
+        return self._pinned
 
     def focus(self) -> None:
         """Ramène la fenêtre devant le client League (c'est au joueur de bannir ou de choisir)."""
-        w = self._window
-        w.restore()
-        if w.on_top:  # épinglée : déjà au premier plan
+        self._window.restore()
+        if self._pinned:  # épinglée : déjà au premier plan
             return
         # Windows refuse de voler le focus : un passage bref en « toujours au premier plan » suffit.
-        w.on_top = True
-        time.sleep(0.4)
-        w.on_top = False
+        try:
+            _set_top_most(self._window, True)
+            time.sleep(0.4)
+            _set_top_most(self._window, False)
+        except Exception:  # noqa: BLE001
+            log.exception("Impossible de ramener la fenêtre au premier plan")
 
 
 def _alert(text: str) -> None:
