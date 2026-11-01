@@ -1,0 +1,11 @@
+class LolGetChampionAnalysis: data
+class Data: summary,core_items,boots,starter_items,fourth_items,fifth_items,sixth_items,summoner_spells,runes,skills
+class Summary: average_stats,positions
+class AverageStats: play,win_rate,pick_rate,tier
+class Position: name,stats
+class Stats: play,win_rate,pick_rate,role_rate
+class CoreItems: ids,play,win,pick_rate
+class Runes: primary_page_id,primary_rune_ids,secondary_page_id,secondary_rune_ids,stat_mod_ids,play,win,pick_rate
+class Skills: order,play,win,pick_rate
+
+LolGetChampionAnalysis(Data(Summary(AverageStats(116946,0.51,0.06,2),[Position("MID",Stats(99280,0.51,0.05,0.85)),Position("JUNGLE",Stats(12651,0.51,0.01,0.11))]),CoreItems([3100,3157,4645],7349,3688,0.12),CoreItems([3020],57484,29720,0.66),CoreItems([1056,2003,2003],84777,43385,0.94),[CoreItems([3089],11432,6606,0.35),CoreItems([3157],5554,3409,0.17),CoreItems([4645],4998,2927,0.15)],[CoreItems([3089],2303,1498,0.23),CoreItems([3135],2031,1150,0.21),CoreItems([4645],1070,643,0.11)],[CoreItems([4646],54,29,0.18),CoreItems([3135],45,28,0.15),CoreItems([3102],39,20,0.13)],CoreItems([4,14],88311,45178,0.98),Runes(8100,[8112,8143,8140,8135],8200,[8210,8237],[5008,5008,5001],35904,18119,0.38),Skills(["E","W","Q","E","E","R","E","W","E","W","R","W","W","Q","Q"],31344,18027,0.51)))

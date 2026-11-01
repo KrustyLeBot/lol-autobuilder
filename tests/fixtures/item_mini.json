@@ -1,0 +1,17 @@
+{
+  "data": {
+    "1001": {"name": "Boots", "tags": ["Boots"], "into": ["3020"], "gold": {"total": 300, "purchasable": true}, "maps": {"11": true}},
+    "1052": {"name": "Amplifying Tome", "tags": ["SpellDamage"], "into": ["6655"], "gold": {"total": 400, "purchasable": true}, "maps": {"11": true}},
+    "1056": {"name": "Doran's Ring", "tags": ["Lane", "SpellDamage"], "gold": {"total": 400, "purchasable": true}, "maps": {"11": true}},
+    "2003": {"name": "Health Potion", "tags": ["Consumable"], "consumed": true, "gold": {"total": 50, "purchasable": true}, "maps": {"11": true}},
+    "3340": {"name": "Stealth Ward", "tags": ["Trinket"], "gold": {"total": 0, "purchasable": true}, "maps": {"11": true}},
+    "3020": {"name": "Sorcerer's Shoes", "tags": ["Boots"], "gold": {"total": 1100, "purchasable": true}, "maps": {"11": true}},
+    "3158": {"name": "Ionian Boots", "tags": ["Boots"], "gold": {"total": 900, "purchasable": true}, "maps": {"11": true}},
+    "6655": {"name": "Luden's Companion", "tags": ["SpellDamage"], "gold": {"total": 2900, "purchasable": true}, "maps": {"11": true}},
+    "3089": {"name": "Rabadon's Deathcap", "tags": ["SpellDamage"], "gold": {"total": 3600, "purchasable": true}, "maps": {"11": true}},
+    "3157": {"name": "Zhonya's Hourglass", "tags": ["SpellDamage"], "gold": {"total": 3250, "purchasable": true}, "maps": {"11": true}},
+    "4645": {"name": "Shadowflame", "tags": ["SpellDamage"], "gold": {"total": 3200, "purchasable": true}, "maps": {"11": true}},
+    "3135": {"name": "Void Staff", "tags": ["SpellDamage"], "gold": {"total": 3000, "purchasable": true}, "maps": {"11": true}},
+    "4005": {"name": "Imperial Mandate", "tags": ["SpellDamage"], "gold": {"total": 2250, "purchasable": true}, "maps": {"11": true}}
+  }
+}

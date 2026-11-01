@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lolbuilds</title>
+<link rel="stylesheet" href="/ui/fonts/fonts.css">
+<link rel="stylesheet" href="/ui/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="titlebar pywebview-drag-region">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 2 28 9v14L16 30 4 23V9z" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M16 8 22 11.5v9L16 24l-6-3.5v-9z" fill="currentColor" opacity=".9"/>
+      </svg>
+      <span class="realm-crest" aria-hidden="true"></span>
+      <span class="brand-name">lol<b>builds</b></span>
+    </div>
+    <div class="conn" id="conn" data-state="waiting">
+      <span class="conn-dot"></span><span id="conn-label">En attente du client</span>
+    </div>
+    <div class="titlebar-spacer"></div>
+    <div class="quick">
+      <label class="switch" for="opt-auto" title="Applique automatiquement le build préféré dès que ton champion est choisi">
+        <input type="checkbox" id="opt-auto">
+        <span class="switch-track"><span class="switch-thumb"></span></span>
+        <span class="switch-label">Auto</span>
+      </label>
+      <label class="switch" for="opt-alert" title="Quand c'est à toi de bannir ou de choisir : fenêtre au premier plan et petit son">
+        <input type="checkbox" id="opt-alert">
+        <span class="switch-track"><span class="switch-thumb"></span></span>
+        <span class="switch-label">Alerte</span>
+      </label>
+      <div class="seg" role="group" aria-label="Touche de Flash">
+        <span class="seg-label">Flash</span>
+        <button type="button" id="flash-d" data-key="D">D</button>
+        <button type="button" id="flash-f" data-key="F">F</button>
+      </div>
+    </div>
+    <div class="winctl" id="winctl" hidden>
+      <button type="button" id="win-pin" title="Toujours au premier plan" aria-label="Toujours au premier plan">
+        <svg viewBox="0 0 16 16"><path d="M10 1.5 14.5 6l-2 .5-2.5 2.5.5 3.5-1 1L6 10l-3.5 3.5-.5-.5L5.5 9.5 2 6l1-1 3.5.5L9 3l.5-2z" fill="currentColor"/></svg>
+      </button>
+      <button type="button" id="win-min" title="Réduire" aria-label="Réduire"><svg viewBox="0 0 16 16"><path d="M3 8.5h10" stroke="currentColor" stroke-width="1.5"/></svg></button>
+      <button type="button" id="win-close" class="close" title="Fermer" aria-label="Fermer"><svg viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.5"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="Navigation">
+    <button type="button" class="rail-btn active" data-view="live" id="nav-live">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 20.5 7v10L12 21.5 3.5 17V7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
+      <span>Champ select</span>
+    </button>
+    <button type="button" class="rail-btn" data-view="library" id="nav-library">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v16H4zM14 4h6v7h-6zM14 14h6v6h-6z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      <span>Builds</span>
+    </button>
+    <button type="button" class="rail-btn" data-view="settings" id="nav-settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.4 3h3.2l.5 2.4 1.7.9 2.3-.9 1.6 2.8-1.8 1.6v1.9l1.8 1.6-1.6 2.8-2.3-.9-1.7.9-.5 2.4h-3.2l-.5-2.4-1.7-.9-2.3.9-1.6-2.8 1.8-1.6v-1.9L4.3 8.2l1.6-2.8 2.3.9 1.7-.9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <span>Réglages</span>
+    </button>
+    <div class="rail-foot" id="rail-foot"></div>
+  </nav>
+
+  <main class="main">
+    <section class="view" id="view-live" aria-live="polite"></section>
+    <section class="view" id="view-library" hidden>
+      <div class="lib-head">
+        <div>
+          <h1 class="lib-title">Builds en cache</h1>
+          <p class="lib-sub" id="lib-sub"></p>
+        </div>
+        <div class="lib-tools">
+          <input type="search" id="lib-search" placeholder="Chercher un champion" autocomplete="off">
+          <div class="chips" id="lib-roles"></div>
+        </div>
+      </div>
+      <div class="lib-table" id="lib-table"></div>
+    </section>
+    <section class="view" id="view-settings" hidden>
+      <div class="lib-head">
+        <div>
+          <h1 class="lib-title">Réglages</h1>
+          <p class="lib-sub">Enregistrés tout de suite. L'elo des stats et la récupération OP.GG se règlent dans <code>config.toml</code>.</p>
+        </div>
+      </div>
+      <div class="settings">
+        <section class="panel set-block">
+          <h2 class="section-title">Alertes</h2>
+          <label class="set-row switch" for="set-alert">
+            <span class="set-txt"><b>Alertes activées</b><small>Même interrupteur que « Alerte » dans la barre du haut</small></span>
+            <input type="checkbox" id="set-alert"><span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+          <label class="set-row switch" for="set-focus">
+            <span class="set-txt"><b>Fenêtre au premier plan</b><small>Quand c'est à toi de bannir ou de choisir</small></span>
+            <input type="checkbox" id="set-focus"><span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+          <label class="set-row" for="set-volume">
+            <span class="set-txt"><b>Volume</b><small id="set-volume-val"></small></span>
+            <input type="range" id="set-volume" min="0" max="1" step="0.05">
+          </label>
+          <div class="set-sounds" id="set-sounds"></div>
+        </section>
+        <section class="panel set-block">
+          <h2 class="section-title">Thème</h2>
+          <div class="themes" id="set-themes"></div>
+        </section>
+        <section class="panel set-block">
+          <h2 class="section-title">Champ select</h2>
+          <label class="set-row switch" for="set-auto">
+            <span class="set-txt"><b>Application automatique</b><small>Le build préféré est envoyé au client dès que ton champion est verrouillé</small></span>
+            <input type="checkbox" id="set-auto"><span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+          <div class="set-row">
+            <span class="set-txt"><b>Touche de Flash</b><small>Flash est placé sur cette touche quand le build contient Flash</small></span>
+            <div class="seg" role="group" aria-label="Touche de Flash">
+              <button type="button" data-setflash="D">D</button><button type="button" data-setflash="F">F</button><button type="button" data-setflash="">Libre</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="tooltip" id="tooltip" hidden></div>
+<div class="toasts" id="toasts"></div>
+<script src="/ui/app.js"></script>
+</body>
+</html>

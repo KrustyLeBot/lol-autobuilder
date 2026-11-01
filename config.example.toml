@@ -1,0 +1,22 @@
+# Copier ce fichier en config.toml et l'adapter.
+# Aucune clé API n'est nécessaire : les builds viennent du serveur MCP public d'OP.GG.
+
+[opgg]
+tier = "emerald_plus"       # elo des stats : all, challenger, grandmaster, master_plus, diamond_plus, emerald_plus, platinum_plus...
+game_mode = "ranked"        # ranked, flex
+min_role_rate = 0.10        # un rôle est suivi s'il représente au moins 10 % des parties du champion (le rôle principal l'est toujours)
+request_interval = 0.5      # secondes entre deux requêtes OP.GG
+live = true                 # champ select : récupère le build au moment du pick (gardé en cache pour la journée)
+matchup = true              # champ select : + les builds contre l'adversaire de lane
+
+[prefetch]
+nightly = false             # true : la tâche planifiée récupère tous les champions chaque nuit
+
+[champselect]
+flash_key = "F"             # "D", "F" ou "" (pas de contrainte)
+apply_runes = true
+apply_spells = true
+apply_item_set = true
+
+[paths]
+cache_dir = "~/.lolbuilds"
