@@ -1,14 +1,14 @@
 /* lolbuilds — Disco pick : pendant ton tour de pick, une roulette eurobeat choisit au hasard ton champion, son build
-   et tes sorts, puis le verrouille toujours (on assume le hasard). L'écran reste jusqu'au lancement de la partie.
+   et tes sorts, puis le verrouille dès l'arrêt de la roulette (on assume le hasard). L'écran reste jusqu'au lancement
+   de la partie.
    Activable dans les Réglages ; s'appuie sur les globales de app.js (state, post…). */
 "use strict";
 
 const DISCO_SPELLS = [1, 3, 4, 6, 7, 11, 12, 14, 21];  // sorts de la faille tirés en « Chaos total »
 const DISCO_BPM = 155;
-const DISCO_LOCK_DELAY = 3;  // s de compte à rebours avant le verrouillage (toujours automatique)
 const DISCO_SPIN_MS = 15000;  // la roulette tourne 15 s…
 const DISCO_SPEED = 1500;  // px/s pendant la pleine vitesse (≈ 14 vignettes par seconde, au rythme de l'eurobeat)
-const DISCO_MARGIN_MS = 4500;  // …sauf s'il ne reste plus le temps de verrouiller après (compte à rebours + client)
+const DISCO_MARGIN_MS = 2500;  // …sauf s'il ne reste plus le temps de verrouiller après (réponse du client)
 const DISCO_VU_COLS = 64;
 
 let disco = null;  // partie en cours : { id, reel, roll, timers, music, raf, ... }
@@ -34,7 +34,7 @@ document.addEventListener("click", (e) => {
   }
   if (e.target.closest("[data-discostart]")) discoStart();
   const act = e.target.closest("[data-discoact]");
-  if (act) ({ nitro: discoNitro, lock: discoLock, close: discoHide })[act.dataset.discoact]?.();
+  if (act) ({ nitro: discoNitro, close: discoHide })[act.dataset.discoact]?.();
 });
 
 /** Bouton de la colonne de gauche, pendant mon tour de pick (si le Disco pick est activé). */
@@ -180,16 +180,21 @@ function discoResult() {
         <h1 class="dz-title big">${esc((c?.name || "").toUpperCase())}</h1></div>
       <div class="dz-flames" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div></div>
     <div class="dz-build"><p class="dz-wait loading">Récupération du build sur OP.GG…</p></div>
-    <div class="dz-foot"><span class="dz-count"></span><span class="dz-foot-txt"></span>
-      <button type="button" class="dz-btn lime" data-discoact="lock">VERROUILLER ››</button></div></div>`;
+    <div class="dz-foot"><span class="dz-count"></span><span class="dz-foot-txt"></span></div></div>`;
   discoConfetti();
+  // Sorts « Chaos total » tirés tout de suite : ils ne dépendent pas du build.
+  const pool = [...DISCO_SPELLS];
+  const draw = () => pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+  disco.spells = set.spells === "chaos" ? [draw(), draw()] : null;
+  discoLock();  // le hasard a parlé : verrouillé sur-le-champ (le serveur attend le build pour l'envoyer)
   // Le build arrive par l'état poussé par le serveur (champion survolé) : on l'attend un peu.
   const waitBuild = (tries = 0) => {
     if (!disco) return;
     const cur = state.current;
-    if (cur?.championId === disco.id && cur.build && !cur.fetching) return discoShowBuild(cur.build, set);
+    // Build affiché une fois connu, avec la proposition tirée par le serveur au verrouillage.
+    if (cur?.championId === disco.id && cur.build && !cur.fetching && disco.variant !== undefined) return discoShowBuild(cur.build, set);
     // Pas de build en route (ni en cache, ni demandé à OP.GG) : inutile d'attendre davantage.
-    if (tries > 50 || (tries > 8 && cur?.championId === disco.id && !cur.build && !cur.fetching)) return discoShowBuild(null, set);
+    if (tries > 60 || (tries > 8 && cur?.championId === disco.id && !cur.build && !cur.fetching)) return discoShowBuild(null, set);
     disco.timers.push(setTimeout(() => waitBuild(tries + 1), 200));
   };
   waitBuild();
@@ -197,43 +202,28 @@ function discoResult() {
 
 function discoShowBuild(b, set) {
   if (!disco) return;
-  const variants = b ? variantsOf(b).filter((v) => !(v.tags || []).some((t) => t.startsWith("Atypique"))) : [];
-  disco.variant = variants.length && set.build === "random" ? Math.floor(Math.random() * variants.length) : 0;
-  const v = variants[disco.variant];
-  if (set.spells === "chaos") {
-    const pool = [...DISCO_SPELLS];
-    disco.spells = [pool.splice(Math.floor(Math.random() * pool.length), 1)[0], pool.splice(Math.floor(Math.random() * pool.length), 1)[0]];
-  } else disco.spells = null;
+  const v = b ? variantsOf(b)[disco.variant || 0] : null;
   const spells = disco.spells || (v ? orient(v.spells, state.settings.flashKey) : []);
   const core = v ? ((v.blocks.find((x) => x.key === "core") || v.blocks.find((x) => /^Core/.test(x.type)))?.items || []) : [];
   $("#disco .dz-build").innerHTML = v ? `
     <div><h3>Runes${set.build === "random" ? " (au hasard)" : ""}</h3><span class="dz-ks">${img("perk", v.perks[0], "dz-ks-img")}<b>${esc(perk(v.perks[0])?.name || "")}</b></span></div>
     <div><h3>Core</h3><span class="dz-icons">${core.map((it) => img("item", it.id, "icon", tipAttr("item", it.id))).join("")}</span></div>
     <div><h3>Sorts${set.spells === "chaos" ? " (chaos)" : ""}</h3><span class="dz-icons">${spells.map((s) => img("spell", s, "icon", tipAttr("spell", s))).join("")}</span></div>`
-    : `<p class="dz-wait">Pas de build OP.GG pour ce champion : seul le champion sera verrouillé.</p>`;
-  discoCountdown(DISCO_LOCK_DELAY);
-}
-
-function discoCountdown(n) {
-  if (!disco || disco.locking) return;
-  $("#disco .dz-count").textContent = n;
-  $("#disco .dz-foot-txt").innerHTML = `VERROUILLAGE DANS ${n} S<br><small>build et sorts envoyés au client</small>`;
-  if (n <= 0) return discoLock();
-  disco.timers.push(setTimeout(() => discoCountdown(n - 1), 1000));
+    : `<p class="dz-wait">Pas de build OP.GG pour ce champion : seul le champion est verrouillé.</p>`;
 }
 
 async function discoLock() {
   if (!disco || disco.locking || !disco.result) return;
   disco.locking = true;
-  disco.timers.forEach(clearTimeout);
   $("#disco .dz-foot-txt").innerHTML = "VERROUILLAGE…";
-  const r = await post("/api/disco/lock", { championId: disco.id, variant: disco.variant || 0, spells: disco.spells });
+  // variant -1 : le serveur tire une des propositions OP.GG une fois le build arrivé.
+  const r = await post("/api/disco/lock", { championId: disco.id, variant: state.settings.disco.build === "random" ? -1 : 0, spells: disco.spells });
   if (!disco) return;
   disco.locked = r.ok;
+  disco.variant = r.variant ?? 0;
   $("#disco .dz-count").textContent = r.ok ? "✓" : "!";
   $("#disco .dz-foot-txt").innerHTML = r.ok ? "VERROUILLÉ · DIRECTION LA FAILLE<br><small>la musique continue jusqu'au lancement de la partie</small>"
     : "VERROUILLAGE REFUSÉ PAR LE CLIENT<br><small>choisis ton champion dans League</small>";
-  $("#disco .dz-foot .dz-btn")?.remove();
   if (disco.hidden) discoClose();  // écran déjà fermé par la croix : le tirage est allé au bout
 }
 

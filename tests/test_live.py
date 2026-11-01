@@ -740,6 +740,22 @@ def test_disco_lock_locks_and_applies_chaos_spells(ctrl):
     assert ctrl.state["applied"]["variant"] == 0
 
 
+def test_disco_lock_picks_a_random_proposal(ctrl):
+    ctrl.prefs.update({"disco": {"enabled": True}})
+
+    async def scenario():
+        await ctrl.on_session(pick_phase())
+        r = await ctrl.disco_roll()
+        await ctrl._live_refresh()
+        return await ctrl.disco_lock(r["championId"], -1, None)
+
+    locked = asyncio.run(scenario())
+    variants = ctrl.build.variants
+    assert locked["ok"] and 0 <= locked["variant"] < len(variants)
+    assert not any(t.startswith("Atypique") for t in variants[locked["variant"]].get("tags", []))
+    assert ctrl.state["applied"]["variant"] == locked["variant"]
+
+
 def test_disco_settings_are_validated(ctrl):
     ctrl.prefs.update({"disco": {"enabled": 1, "lights": "laser", "spells": "chaos"}})
     d = ctrl.prefs.data["disco"]

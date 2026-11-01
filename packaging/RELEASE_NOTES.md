@@ -1,10 +1,6 @@
 ## Nouveautés
 
-- **Disco pick** : la musique est maintenant livrée avec l'application : « 夢の向こうへ », un morceau eurobeat créé avec Suno par progressivesubtleties471. Ton propre morceau reste prioritaire : pose un fichier `disco-music.mp3` dans `%USERPROFILE%\.lolbuilds`.
-
-## Corrections
-
-- **Réglages** : cliquer sur un interrupteur (par exemple « Activer le Disco pick ») pouvait faire défiler toute la fenêtre, barre de titre et menu hors de l'écran. La fenêtre ne bouge plus.
+- **Disco pick** : plus de compte à rebours. Dès que la roulette s'arrête, le champion tiré est verrouillé, puis son build (une proposition OP.GG au hasard ou la plus jouée, selon tes réglages) et tes sorts sont envoyés au client.
 
 ## Mettre à jour
 

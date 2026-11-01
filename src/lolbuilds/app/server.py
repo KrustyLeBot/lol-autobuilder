@@ -571,7 +571,9 @@ class Controller:
         return {"ok": True, "championId": champion_id, "reel": reel, "count": len(candidates), "role": role}
 
     async def disco_lock(self, champion_id: int, variant: int, spells: list[int] | None) -> dict[str, Any]:
-        """Verrouille le champion tiré puis envoie son build (et les sorts tirés au sort, en « Chaos total »)."""
+        """Verrouille le champion tiré puis envoie son build (et les sorts tirés au sort, en « Chaos total »).
+
+        `variant` -1 : une des propositions OP.GG au hasard (jamais l'« Atypique »), tirée une fois le build arrivé."""
         turn = self._pick_turn()
         name = self.champions.by_key.get(champion_id, str(champion_id))
         if not turn:
@@ -592,16 +594,20 @@ class Controller:
             if status not in (200, 204):
                 return {"ok": False, "error": f"Le client a refusé de verrouiller {name} ({status})"}
         self._manual = True  # le build tiré ne doit pas être remplacé par l'application automatique
-        for _ in range(40):  # le build OP.GG peut encore être en route
+        for i in range(40):  # le build OP.GG peut encore être en route (s'il n'arrive pas, on n'attend pas 8 s)
             cur = self.state["current"]
-            if cur and cur["championId"] == champion_id and self.build and not cur.get("fetching"):
+            if cur and cur["championId"] == champion_id and not cur.get("fetching") and (self.build or i >= 10):
                 break
             await asyncio.sleep(0.2)
         cur = self.state["current"]
         if cur and cur["championId"] == champion_id and self.build:
+            if variant < 0:
+                choices = [i for i, v in enumerate(self.build.variants or [None])
+                           if not any(str(t).startswith("Atypique") for t in (v or {}).get("tags", []))]
+                variant = random.choice(choices or [0])
             await self.apply(variant, spells=spells, remember=False)
         await self.toast("ok", f"Disco pick : {name} verrouillé")
-        return {"ok": True}
+        return {"ok": True, "variant": max(variant, 0)}
 
     # ------------------------------------------------------------------ mon équipe pendant la partie
 
