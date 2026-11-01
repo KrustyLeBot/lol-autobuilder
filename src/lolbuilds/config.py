@@ -74,10 +74,12 @@ def load_config(path: Path | None) -> Config:
 
 
 def default_config_path() -> Path:
-    """`config.toml` à la racine du projet (ou chemin donné par LOLBUILDS_CONFIG)."""
+    """`config.toml` : LOLBUILDS_CONFIG, sinon `~/.lolbuilds/` pour l'exe installé, sinon la racine du projet."""
     env = os.environ.get("LOLBUILDS_CONFIG")
     if env:
         return Path(env)
+    if getattr(sys, "frozen", False):  # exe PyInstaller : le dossier d'installation n'est pas modifiable
+        return Path("~/.lolbuilds/config.toml").expanduser()
     return Path(__file__).resolve().parents[2] / "config.toml"
 
 

@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+build = ["pyinstaller>=6.10"]  # exe Windows : pyinstaller packaging/lolbuilds.spec
 
 [project.scripts]
 lolbuilds-prefetch = "lolbuilds.prefetch:main"

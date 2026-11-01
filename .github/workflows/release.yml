@@ -1,0 +1,74 @@
+name: Release
+
+# Un tag vX.Y.Z (identique à la version de pyproject.toml) construit l'exe, l'installateur et la version
+# portable sur Windows, puis publie la release GitHub. Lancé à la main, il construit seulement (artefacts).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Dépendances
+        run: pip install -e ".[dev,build]"
+
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "v$version") {
+            Write-Error "Le tag $env:GITHUB_REF_NAME ne correspond pas à la version $version de pyproject.toml"
+            exit 1
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Tests
+        run: python -m pytest -q
+
+      - name: Exe (PyInstaller)
+        run: pyinstaller --noconfirm --clean packaging/lolbuilds.spec
+
+      - name: Installateur (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y | Out-Null }
+          & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Version portable (zip) et empreintes
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item "dist\installer\lolbuilds-setup-$v.exe" release\
+          Compress-Archive -Path dist\lolbuilds -DestinationPath "release\lolbuilds-portable-$v.zip"
+          Get-ChildItem release -File | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content -Encoding utf8 release\SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lolbuilds-${{ steps.version.outputs.version }}
+          path: release/*
+
+      - name: Release GitHub
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "$env:GITHUB_REF_NAME" (Get-ChildItem release -File).FullName `
+            --title "lolbuilds ${{ steps.version.outputs.version }}" --notes-file packaging/RELEASE_NOTES.md

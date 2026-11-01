@@ -54,6 +54,14 @@ class WindowApi:
         w.on_top = False
 
 
+def _alert(text: str) -> None:
+    """Boîte de message Windows : sans console (exe, pythonw), un log seul passerait inaperçu."""
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(None, text, "lolbuilds", 0x40)
+
+
 def serve_in_thread(ctrl: Controller, host: str, port: int) -> threading.Event:
     ready = threading.Event()
     errors: list[BaseException] = []
@@ -87,6 +95,8 @@ def run(args: argparse.Namespace) -> int:
     except OSError as exc:
         log.error("Port %d indisponible (%s) : l'application tourne peut-être déjà.", args.port, exc)
         if not args.browser:
+            _alert(f"lolbuilds est déjà ouvert (ou le port {args.port} est occupé).\n\n"
+                   "Cherche sa fenêtre dans la barre des tâches.")
             return 1
     log.info("Interface sur %s%s", url, " (démo)" if args.demo else "")
 
