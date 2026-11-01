@@ -666,8 +666,6 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
 .cp.ban.pickable { cursor: pointer; }
 .cp.ban.pickable:hover { border-color: color-mix(in srgb, var(--loss) 60%, var(--line)); }
 .cp.ban.selected { border-color: var(--loss); background: color-mix(in srgb, var(--loss) 14%, var(--ink-2)); }
-.section-head .ban-lock { margin-left: 12px; background: var(--loss); border-color: var(--loss); color: #fff; }
-.section-head .ban-lock:hover { filter: brightness(1.1); }
 
 /* ------------------------------------------------------------------ mon équipe en partie */
 .tm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 10px; }

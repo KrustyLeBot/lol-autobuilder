@@ -423,29 +423,36 @@ class Controller:
 
     # ------------------------------------------------------------------ ban depuis l'appli
 
-    async def ban(self, champion_id: int, lock: bool) -> dict[str, Any]:
-        """Survole (puis verrouille si `lock`) un champion dans MON ban en cours ; jamais une action de pick."""
+    async def ban(self, champion_id: int) -> dict[str, Any]:
+        """Bannit (sélection + verrouillage) un champion dans MON ban en cours ; jamais une action de pick."""
         cs = self.state["champSelect"] or {}
         turn = cs.get("turn")
-        if not self.lcu or not turn or turn.get("type") != "ban" or turn.get("id") is None:
-            return {"ok": False, "error": "Ce n'est pas ton tour de bannir"}
-        if champion_id in {b["championId"] for b in cs.get("bans", [])} | {e["championId"] for e in cs.get("enemies", [])}:
-            return {"ok": False, "error": "Ce champion est déjà banni ou choisi"}
-        if champion_id in {a["championId"] or a["intent"] for a in cs.get("allies", []) if not a["isMe"]}:
-            return {"ok": False, "error": "Un allié veut jouer ce champion"}
-        path = f"/lol-champ-select/v1/session/actions/{turn['id']}"
-        status, data = await self.lcu.request("PATCH", path, {"championId": champion_id})
-        if status not in (200, 204):
-            log.warning("Ban : survol refusé (%s) %s", status, data)
-            return {"ok": False, "error": "Le client a refusé ce ban"}
-        if lock:
-            status, data = await self.lcu.request("POST", path + "/complete")
-            if status not in (200, 204):
-                log.warning("Ban : verrouillage refusé (%s) %s", status, data)
-                return {"ok": False, "error": "Le client a refusé de verrouiller le ban"}
-        self.state["banPick"] = {"championId": champion_id, "locked": lock, "action": turn["id"]}
         name = self.champions.by_key.get(champion_id, str(champion_id))
-        await self.toast("ok", f"{name} banni" if lock else f"{name} sélectionné pour ton ban")
+
+        def refuse(error: str) -> dict[str, Any]:
+            log.info("Ban de %s refusé : %s (tour : %s)", name, error, turn)
+            return {"ok": False, "error": error}
+
+        if not self.lcu or not turn or turn.get("type") != "ban" or turn.get("id") is None:
+            return refuse("Ce n'est pas ton tour de bannir")
+        if champion_id in {b["championId"] for b in cs.get("bans", [])} | {e["championId"] for e in cs.get("enemies", [])}:
+            return refuse("Ce champion est déjà banni ou choisi")
+        if champion_id in {a["championId"] or a["intent"] for a in cs.get("allies", []) if not a["isMe"]}:
+            return refuse("Un allié veut jouer ce champion")
+        path = f"/lol-champ-select/v1/session/actions/{turn['id']}"
+        # Sélection et verrouillage en une requête ; si le client la refuse, sélection puis « complete ».
+        status, data = await self.lcu.request("PATCH", path, {"championId": champion_id, "completed": True})
+        log.info("Ban de %s : PATCH %s -> %s %s", name, path, status, data or "")
+        if status not in (200, 204):
+            status, data = await self.lcu.request("PATCH", path, {"championId": champion_id})
+            log.info("Ban de %s : sélection -> %s %s", name, status, data or "")
+            if status in (200, 204):
+                status, data = await self.lcu.request("POST", path + "/complete")
+                log.info("Ban de %s : verrouillage -> %s %s", name, status, data or "")
+            if status not in (200, 204):
+                return refuse(f"Le client a refusé le ban ({status})")
+        self.state["banPick"] = {"championId": champion_id, "locked": True, "action": turn["id"]}
+        await self.toast("ok", f"{name} banni")
         return {"ok": True}
 
     # ------------------------------------------------------------------ mon équipe pendant la partie
@@ -944,7 +951,7 @@ def make_app(ctrl: Controller) -> web.Application:
     @routes.post("/api/ban")
     async def ban(req: web.Request) -> web.Response:
         body = await req.json()
-        result = await ctrl.ban(int(body.get("championId") or 0), bool(body.get("lock")))
+        result = await ctrl.ban(int(body.get("championId") or 0))
         if not result["ok"]:
             await ctrl.toast("warn", result["error"])
         return web.json_response(result)

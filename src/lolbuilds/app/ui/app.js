@@ -401,7 +401,7 @@ function banHtml(bs) {
   const role = ROLE_LABEL[bs.role] || "";
   const title = bs.mode === "threats" ? `Bans suggérés · menaces pour ${esc(champ(bs.championId)?.name || "")}` : `Bans suggérés · les plus forts en ${role}`;
   const note = bs.mode === "threats" ? "winrate de ces champions contre le tien (OP.GG)" : "tier list OP.GG du moment";
-  // Pendant MON tour de ban (et seulement là), un clic sélectionne le champion dans le client, un second le verrouille.
+  // Pendant MON tour de ban (et seulement là), un clic bannit le champion (sélection + verrouillage).
   const myTurn = state.champSelect?.turn?.type === "ban";
   const chosen = state.banPick && state.banPick.action === state.champSelect?.turn?.id ? state.banPick : null;
   const card = (p) => {
@@ -411,17 +411,14 @@ function banHtml(bs) {
         <span class="cp-wr num ${wrClass(p.winrate)}">${pct(p.winrate)}</span>`;
     if (!myTurn) return `<div class="cp ban" ${tipAttr("champion", p.championId)}>${inner}</div>`;
     const sel = chosen?.championId === p.championId;
-    return `<button type="button" class="cp ban pickable${sel ? " selected" : ""}" data-ban="${p.championId}" aria-pressed="${sel}"
+    return `<button type="button" class="cp ban pickable${sel ? " selected" : ""}" data-ban="${p.championId}" aria-pressed="${sel}"${chosen?.locked ? " disabled" : ""}
       aria-label="Bannir ${esc(champ(p.championId)?.name || "")}">${inner}</button>`;
   };
   const body = !bs.picks.length ? '<p class="cp-msg dim">Rien à suggérer : tous les candidats sont déjà bannis ou pris.</p>'
     : `<div class="cp-list">${bs.picks.map(card).join("")}</div>`;
-  const lock = myTurn && chosen && !chosen.locked
-    ? `<button type="button" class="btn ban-lock" data-banlock="${chosen.championId}">Bannir ${esc(champ(chosen.championId)?.name || "")}</button>` : "";
-  const hint = myTurn ? (chosen?.locked ? "ban verrouillé" : "clique un champion pour le sélectionner, puis Bannir")
-    : `${role} · ${note}`;
+  const hint = myTurn ? (chosen?.locked ? "ban verrouillé" : "clique un champion pour le bannir") : `${role} · ${note}`;
   return `<section class="section counters bans-sugg"><div class="section-head"><h2 class="section-title">${title}</h2>
-    <span class="section-note">${hint}</span>${lock}</div>${body}</section>`;
+    <span class="section-note">${hint}</span></div>${body}</section>`;
 }
 
 /** Partie en cours : les joueurs de mon équipe, avec leur profil OP.GG résumé. */
@@ -682,12 +679,10 @@ function setView(v) {
 
 /* ------------------------------------------------------------------ interactions */
 document.addEventListener("click", async (e) => {
-  const t = e.target.closest("[data-variant],[data-spells],[data-role],[data-goto],[data-open],[data-view],[data-librole],[data-key],[data-opponent],[data-preview],[data-ban],[data-banlock],[data-libback]");
+  const t = e.target.closest("[data-variant],[data-spells],[data-role],[data-goto],[data-open],[data-view],[data-librole],[data-key],[data-opponent],[data-preview],[data-ban],[data-libback]");
   if (!t) return;
   if (t.dataset.ban) {
-    post("/api/ban", { championId: Number(t.dataset.ban), lock: false });
-  } else if (t.dataset.banlock) {
-    post("/api/ban", { championId: Number(t.dataset.banlock), lock: true });
+    post("/api/ban", { championId: Number(t.dataset.ban) });
   } else if (t.dataset.preview) {
     post("/api/preview", { championId: Number(t.dataset.preview) });
   } else if (t.dataset.opponent) {

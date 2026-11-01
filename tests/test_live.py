@@ -341,31 +341,48 @@ def test_no_ban_suggestions_once_banned(ctrl):
 
 # --------------------------------------------------------------------------- ban depuis l'appli
 
-def test_ban_select_then_lock(ctrl):
+def test_ban_in_one_click(ctrl):
     asyncio.run(ctrl.on_session(ban_phase()))
     ctrl.lcu.calls.clear()
-    assert asyncio.run(ctrl.ban(55, lock=False))["ok"]
-    assert ctrl.lcu.calls == [("PATCH", "/lol-champ-select/v1/session/actions/11", {"championId": 55})]
-    assert asyncio.run(ctrl.ban(55, lock=True))["ok"]
-    assert ctrl.lcu.calls[-1] == ("POST", "/lol-champ-select/v1/session/actions/11/complete", None)
+    assert asyncio.run(ctrl.ban(55))["ok"]
+    assert ctrl.lcu.calls == [("PATCH", "/lol-champ-select/v1/session/actions/11", {"championId": 55, "completed": True})]
     assert ctrl.state["banPick"] == {"championId": 55, "locked": True, "action": 11}
+
+
+def test_ban_falls_back_to_select_then_complete(ctrl):
+    class OldClient(FakeLcu):  # client qui refuse « completed » dans le PATCH
+        async def request(self, method, path, body=None):
+            if method == "PATCH" and body and body.get("completed"):
+                self.calls.append((method, path, body))
+                return 400, {"message": "completed non accepté"}
+            return await super().request(method, path, body)
+
+    ctrl.lcu = OldClient()
+    asyncio.run(ctrl.on_session(ban_phase()))
+    ctrl.lcu.calls.clear()
+    assert asyncio.run(ctrl.ban(55))["ok"]
+    assert [(m, p) for m, p, _ in ctrl.lcu.calls] == [
+        ("PATCH", "/lol-champ-select/v1/session/actions/11"),
+        ("PATCH", "/lol-champ-select/v1/session/actions/11"),
+        ("POST", "/lol-champ-select/v1/session/actions/11/complete"),
+    ]
 
 
 def test_ban_refused_outside_my_ban_turn(ctrl):
     asyncio.run(ctrl.on_session(ban_phase(phase="PLANNING")))  # prépick : pas encore mon tour
     ctrl.lcu.calls.clear()
-    assert not asyncio.run(ctrl.ban(55, lock=True))["ok"]
+    assert not asyncio.run(ctrl.ban(55))["ok"]
     s = ban_phase()
     s["actions"][-1][0]["type"] = "pick"  # mon action en cours est un pick : jamais touchée
     asyncio.run(ctrl.on_session(s))
-    assert not asyncio.run(ctrl.ban(55, lock=True))["ok"]
+    assert not asyncio.run(ctrl.ban(55))["ok"]
     assert not any(m in ("PATCH", "POST") for m, _, _ in ctrl.lcu.calls)
 
 
 def test_ban_refused_for_taken_or_wanted_champion(ctrl):
     asyncio.run(ctrl.on_session(ban_phase(bans=[134])))
-    assert "déjà banni" in asyncio.run(ctrl.ban(134, lock=True))["error"]
-    assert "allié" in asyncio.run(ctrl.ban(105, lock=True))["error"]  # Fizz voulu par un allié
+    assert "déjà banni" in asyncio.run(ctrl.ban(134))["error"]
+    assert "allié" in asyncio.run(ctrl.ban(105))["error"]  # Fizz voulu par un allié
 
 
 # --------------------------------------------------------------------------- mon équipe en partie
