@@ -931,3 +931,9 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
 }
 
 .game-build .block-head span { display: none; }
+
+/* En jeu : chargement des profils (affichés tous ensemble une fois prêts) */
+.lanes-loading { display: grid; gap: 10px; padding: 18px; background: var(--ink-1); border: 1px solid var(--line-soft); }
+.ll-track { height: 4px; background: var(--ink-3); }
+.ll-fill { height: 100%; background: var(--gold); transition: width .3s var(--ease); }
+.live-main .lanes-loading { padding: 16px 18px; }

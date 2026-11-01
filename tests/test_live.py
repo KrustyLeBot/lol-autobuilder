@@ -423,14 +423,21 @@ def test_team_loaded_when_game_starts(ctrl, monkeypatch):
     ]
     monkeypatch.setattr(players, "live_players", lambda: ("Moi#EUW", everyone))
     monkeypatch.setattr(ctrl.live, "player_profile", lambda name, tag, region: PROFILE)
+    monkeypatch.setattr(ctrl.live, "player_matches", lambda name, tag, region: MATCHES)
+    seen = []
 
     async def scenario():
+        async def spy():
+            seen.append({k: v for k, v in (ctrl.state["team"] or {}).items() if k in ("status", "done", "total")})
+        ctrl.broadcast = spy
         ctrl.on_phase("InProgress")
         await ctrl._team_task
 
     asyncio.run(scenario())
     team = ctrl.state["team"]
     assert team["status"] == "ok" and [p["riotId"] for p in team["players"]] == ["Moi#EUW", "Pote#123"]
+    # progression pendant le chargement, puis tous les joueurs d'un coup
+    assert {"status": "loading", "done": 0, "total": 3} in seen and seen[-1] == {"status": "ok", "done": 3, "total": 3}
     assert team["players"][0]["isMe"] and team["players"][0]["championId"] == 103
     assert team["players"][1]["championId"] == 412 and team["players"][1]["rank"] == "Or I"
     ctrl.on_phase("Lobby")
@@ -650,3 +657,35 @@ def test_hovered_build_dropped_when_champ_select_ends(ctrl):
     ctrl.state["current"]["locked"] = False  # esquive : rien n'était verrouillé
     asyncio.run(ctrl.on_session(None))
     assert ctrl.state["current"] is None
+
+
+def test_slow_profile_does_not_block_the_others(ctrl, monkeypatch):
+    import time as _time
+    from lolbuilds import players
+
+    everyone = [
+        {"riotIdGameName": "Moi", "riotIdTagLine": "EUW", "team": "ORDER", "position": "MIDDLE",
+         "rawChampionName": "game_character_displayname_Ahri"},
+        {"riotIdGameName": "Lent", "riotIdTagLine": "1", "team": "CHAOS", "position": "TOP",
+         "rawChampionName": "game_character_displayname_Thresh"},
+    ]
+
+    def profile(name, tag, region):
+        if name == "Lent":
+            _time.sleep(0.3)
+        return PROFILE
+
+    monkeypatch.setattr(server, "TEAM_WAIT", 0.05)
+    monkeypatch.setattr(players, "live_players", lambda: ("Moi#EUW", everyone))
+    monkeypatch.setattr(ctrl.live, "player_profile", profile)
+    statuses = []
+
+    async def scenario():
+        async def spy():
+            statuses.append(ctrl.state["team"]["status"])
+        ctrl.broadcast = spy
+        ctrl.on_phase("InProgress")
+        await ctrl._team_task
+
+    asyncio.run(scenario())
+    assert "partial" in statuses and statuses[-1] == "ok"  # affiché sans attendre le retardataire

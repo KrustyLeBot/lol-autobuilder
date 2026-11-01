@@ -1,11 +1,7 @@
 ## Nouveautés
 
-- **Tout tient sur un écran, sans défiler** (fenêtre de 1280×900) :
-  - portrait et builds plus compacts ;
-  - l'état du build (✓ Runes · Sorts · Item set) passe sur la ligne de la draft ;
-  - bans suggérés et bons picks sur une seule ligne ;
-  - runes, items, sorts et compétences resserrés.
-- **En jeu, duels par lane** : une ligne par poste avec ton joueur face à son adversaire (rang, saison, résultats sur son champion). Ta lane est surlignée et ton vis-à-vis est détaillé dessous (dernières parties, duel selon OP.GG). Le build appliqué passe en résumé sous le portrait.
+- **Profils des joueurs bien plus rapides en jeu** : les 10 profils OP.GG (et l'historique de ton vis-à-vis) sont récupérés en même temps au lieu de l'un après l'autre, une dizaine de secondes au lieu d'environ une minute.
+- **Affichage d'un coup** : pendant le chargement, une barre « Profils OP.GG des joueurs… 6 / 10 » ; les duels par lane apparaissent tous ensemble une fois les profils arrivés. Si un profil traîne plus de 20 s, les autres s'affichent quand même et il se complète à son arrivée.
 
 ## Mettre à jour
 

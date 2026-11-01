@@ -505,9 +505,16 @@ function lanesHtml(team) {
   }
   const rows = pairs.map(([a, e, r]) => `<div class="lane${a?.isMe ? " mine" : ""}">${laneSideHtml(a, false)}
       <span class="ln-role">${r ? roleIcon(r) + (ROLE_LABEL[r] || "") : ""}</span>${laneSideHtml(e, true)}</div>`).join("");
-  const waiting = team.status === "loading" && !allies.length
-    ? '<p class="cp-msg"><span class="loading">En attente du chargement de la partie…</span></p>' : "";
   const none = team.status === "unavailable" ? '<p class="cp-msg dim">Les infos de la partie ne sont pas disponibles.</p>' : "";
+  if (team.status === "loading") {
+    // Les profils arrivent dans le désordre : on montre la progression, puis tous les joueurs d'un coup.
+    const total = team.total || 10;
+    const done = team.done || 0;
+    const text = allies.length ? `Profils OP.GG des joueurs… <b class="num">${done} / ${total}</b>` : "En attente du chargement de la partie…";
+    return `<section class="section lanes-loading"><p class="cp-msg"><span class="loading">${text}</span></p>
+      <div class="ll-track"><div class="ll-fill" style="width:${allies.length ? Math.round(done / total * 100) : 0}%"></div></div></section>`;
+  }
+  const waiting = "";
   const opp = enemies.find((p) => p.isOpponent);
   return `<section class="section lanes"><div class="lanes-head"><h2 class="section-title ally">Ton équipe</h2>
       <span class="section-note">Profils OP.GG · classé solo, saison en cours</span><h2 class="section-title enemy">Équipe adverse</h2></div>

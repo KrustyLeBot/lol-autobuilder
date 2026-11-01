@@ -109,6 +109,7 @@ def select_counter_picks(counters: list[dict[str, Any]], unavailable: set[int], 
 
 # Phases hors partie : on oublie le build et les joueurs de la partie précédente.
 IDLE_PHASES = ("None", "Lobby", "Matchmaking", "ReadyCheck")
+TEAM_WAIT = 20  # s : au-delà, les joueurs s'affichent même si quelques profils OP.GG manquent
 
 
 class Controller:
@@ -530,10 +531,11 @@ class Controller:
             or next((e for e in team["enemies"] if opp_id and e["championId"] == opp_id), None)
         if opp:
             opp["isOpponent"] = True
-        await self.broadcast()
         pairs = [*zip(team["players"], allies), *zip(team["enemies"], enemies)]
-        pairs.sort(key=lambda x: 0 if x[0] in team["players"] or x[0] is opp else 1)  # mon équipe et mon vis-à-vis d'abord
-        for e, p in pairs:
+        team["total"], team["done"] = len(pairs), 0
+        await self.broadcast()
+
+        async def load(e: dict[str, Any], p: dict[str, Any]) -> None:
             name, tag = players.riot_id(p)
             try:
                 profile = await asyncio.to_thread(self.live.player_profile, name, tag, region)
@@ -544,9 +546,19 @@ class Controller:
                 e["status"] = "error"
             if e is opp:
                 await self._load_opponent(opp, name, tag, region, players.champion_id(p))
-            await self.broadcast()
-        team["status"] = "ok"
+            team["done"] += 1
+            await self.broadcast()  # pendant le chargement, l'écran n'affiche que la progression
+
+        # Tous les profils en même temps ; l'écran les montre ensemble une fois chargés (ou après TEAM_WAIT s,
+        # les retardataires restant « Profil OP.GG… »).
+        tasks = [asyncio.create_task(load(e, p)) for e, p in pairs]
+        _, pending = await asyncio.wait(tasks, timeout=TEAM_WAIT)
+        team["status"] = "partial" if pending else "ok"
         await self.broadcast()
+        if pending:
+            await asyncio.wait(pending)
+            team["status"] = "ok"
+            await self.broadcast()
 
     async def _load_opponent(self, opp: dict[str, Any], name: str, tag: str, region: str, champ: str) -> None:
         """Mon vis-à-vis : ses dernières parties et la lecture du duel par OP.GG."""

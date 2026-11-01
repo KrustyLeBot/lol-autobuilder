@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import threading
 from datetime import date
 from itertools import permutations
@@ -30,9 +31,13 @@ from .ddragon import DataDragon, StaticData
 from .models import Build
 from .players import MATCH_FIELDS, PROFILE_FIELDS
 from .sources import BuildSourceError
-from .sources.opgg import OpggSource
+from .sources.opgg import OpggClient, OpggSource
 
 log = logging.getLogger(__name__)
+
+# Profils des 10 joueurs : une requête OP.GG prend plusieurs secondes, on en lance quelques-unes en même temps,
+# chacune sur sa propre session (le client n'est pas partagé entre threads).
+PLAYER_SESSIONS = 5
 
 
 def guess_lanes(enemies: list[str], roles: dict[str, dict[str, float]]) -> dict[str, str]:
@@ -59,6 +64,7 @@ class LiveBuilds:
         self._roles: dict[str, dict[str, float]] | None = None
         self._profiles: dict[tuple[str, str, str], Any] = {}
         self._matches: dict[tuple[str, str, str], Any] = {}
+        self._player_clients: queue.Queue[OpggClient] | None = None
         self._roles_date = ""
 
     # ------------------------------------------------------------------ données statiques
@@ -235,27 +241,40 @@ class LiveBuilds:
         """Profil OP.GG d'un joueur (gardé en mémoire le temps de la session de l'appli)."""
         key = (game_name.lower(), tag.lower(), region)
         if key not in self._profiles:
-            with self._lock:
-                self._profiles[key] = self.source.client.call("lol_get_summoner_profile", {
-                    "game_name": game_name, "tag_line": tag, "region": region, "lang": "en_US",
-                    "desired_output_fields": PROFILE_FIELDS,
-                })
+            self._profiles[key] = self._player_call("lol_get_summoner_profile", {
+                "game_name": game_name, "tag_line": tag, "region": region, "lang": "en_US",
+                "desired_output_fields": PROFILE_FIELDS,
+            })
         return self._profiles[key]
 
     def player_matches(self, game_name: str, tag: str, region: str) -> Any:
         """Dernières parties d'un joueur (gardées en mémoire le temps de la session de l'appli)."""
         key = (game_name.lower(), tag.lower(), region)
         if key not in self._matches:
-            with self._lock:
-                self._matches[key] = self.source.client.call("lol_list_summoner_matches", {
-                    "game_name": game_name, "tag_line": tag, "region": region, "lang": "en_US", "limit": 10,
-                    "desired_output_fields": MATCH_FIELDS,
-                })
+            self._matches[key] = self._player_call("lol_list_summoner_matches", {
+                "game_name": game_name, "tag_line": tag, "region": region, "lang": "en_US", "limit": 10,
+                "desired_output_fields": MATCH_FIELDS,
+            })
         return self._matches[key]
+
+    def _player_call(self, tool: str, arguments: dict[str, Any]) -> Any:
+        """Appel OP.GG sur l'une des sessions réservées aux joueurs (attend qu'une se libère)."""
+        with self._lock:
+            if self._player_clients is None:
+                self._player_clients = queue.Queue()
+                for _ in range(PLAYER_SESSIONS):
+                    self._player_clients.put(OpggClient(self.cfg.opgg.request_interval))
+        client = self._player_clients.get()
+        try:
+            return client.call(tool, arguments)
+        finally:
+            self._player_clients.put(client)
 
     def close(self) -> None:
         if self._source:
             self._source.close()
+        while self._player_clients and not self._player_clients.empty():
+            self._player_clients.get_nowait().close()
 
 
 def _read(path: Path) -> dict[str, Any] | None:
