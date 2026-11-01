@@ -155,3 +155,21 @@ def test_session_stage(ctrl):
     assert ctrl._summarize_session(demo_session(103, 0, "pick"))["stage"] == "pick"
     assert ctrl._summarize_session(demo_session(103, 0, "locked"))["stage"] == "ban_pick"
     assert ctrl._summarize_session(demo_session(103, 0, "planning"))["stage"] == "planning"
+
+
+def test_spells_setting_stops_lolbuilds_from_touching_the_summoner_spells(ctrl):
+    ctrl.lcu = FakeLcu()
+    ctrl.prefs.update({"applySpells": False})
+    assert ctrl.applier().settings.apply_spells is False
+
+    async def scenario():
+        await ctrl.on_session(session())
+        await asyncio.sleep(0.01)
+        await ctrl._apply_task
+
+    asyncio.run(scenario())
+    assert not any(m == "PATCH" and "my-selection" in p for m, p, _ in ctrl.lcu.calls)  # sorts intacts
+    assert any(m == "POST" for m, _, _ in ctrl.lcu.calls)  # les runes restent appliquées
+    assert ctrl._settings()["applySpells"] is False
+    ctrl.prefs.update({"applySpells": True})
+    assert ctrl.applier().settings.apply_spells is True

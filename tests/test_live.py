@@ -537,3 +537,22 @@ def test_aram_build_is_not_a_lane_build(tmp_path):
     cache.save(make_build(role="aram", name="Ahri ARAM"))
     assert [b.role for b in cache.builds_for_champion("Ahri")] == ["middle"]
     assert [p.name for p in cache.build_paths()] == ["Ahri_middle.json"]
+
+
+def test_library_peek_never_touches_the_champ_select(ctrl):
+    run(ctrl, ahri_vs([134]))
+    before = ctrl.state["current"]
+    ctrl.cache.save(make_build(champion="Syndra", role="top", name="Syndra Top"))
+    peek = ctrl.peek_build(134, "top")
+    assert peek["champion"] == "Syndra" and peek["build"]["role"] == "top" and peek["roles"] == ["top"]
+    assert ctrl.state["current"] is before and before["champion"] == "Ahri"  # la sélection en cours est intacte
+    assert ctrl.build.champion == "Ahri"
+    missing = ctrl.peek_build(134, "jungle")
+    assert missing["build"] is None
+
+
+def test_library_peek_lists_the_aram_build_as_a_tab(ctrl):
+    ctrl.cache.save(make_build())
+    ctrl.cache.save(make_build(role="aram", name="Ahri ARAM"))
+    peek = ctrl.peek_build(103, "aram")
+    assert peek["mode"] == "aram" and peek["roles"] == ["middle", "aram"]

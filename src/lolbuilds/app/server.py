@@ -57,7 +57,7 @@ class Prefs:
     def __init__(self, path: Path, flash_key: str) -> None:
         self.path = path
         self.data: dict[str, Any] = {
-            "autoApply": True, "turnAlert": True, "alertFocus": True, "volume": 0.6,
+            "autoApply": True, "turnAlert": True, "alertFocus": True, "applySpells": True, "volume": 0.6,
             "sounds": dict(SOUND_EVENTS), "theme": "hextech", "flashKey": flash_key, "preferred": {},
         }
         try:
@@ -70,7 +70,7 @@ class Prefs:
 
     def update(self, body: dict[str, Any]) -> None:
         """Applique les réglages envoyés par la page (valeurs invalides ignorées)."""
-        for key in ("autoApply", "turnAlert", "alertFocus"):
+        for key in ("autoApply", "turnAlert", "alertFocus", "applySpells"):
             if key in body:
                 self.data[key] = bool(body[key])
         if isinstance(body.get("volume"), int | float):
@@ -157,7 +157,7 @@ class Controller:
     # ------------------------------------------------------------------ état
 
     def _settings(self) -> dict[str, Any]:
-        keys = ("autoApply", "turnAlert", "alertFocus", "volume", "sounds", "theme", "flashKey")
+        keys = ("autoApply", "turnAlert", "alertFocus", "applySpells", "volume", "sounds", "theme", "flashKey")
         return {k: self.prefs.data[k] for k in keys}
 
     def _last_prefetch(self) -> str | None:
@@ -165,7 +165,10 @@ class Controller:
         return max(dates) if dates else None
 
     def applier(self) -> BuildApplier:
-        settings = dataclasses.replace(self.cfg.champselect, flash_key=self.prefs.data["flashKey"])
+        # `applySpells` (Réglages) coupe seulement l'application automatique ou en un clic du build : choisir une
+        # paire de sorts à la main (apply_spells) reste possible.
+        settings = dataclasses.replace(self.cfg.champselect, flash_key=self.prefs.data["flashKey"],
+                                       apply_spells=self.cfg.champselect.apply_spells and self.prefs.data["applySpells"])
         return BuildApplier(settings)
 
     async def broadcast(self) -> None:
@@ -291,6 +294,19 @@ class Controller:
             "build": None,
         }
         self._compose()
+
+    def peek_build(self, champion_id: int, role: str) -> dict[str, Any]:
+        """Un build du cache pour la bibliothèque : n'touche ni au champ select ni au build affiché ailleurs."""
+        champ = self.champions.by_key.get(champion_id)
+        build = self.cache.load(champ, role) if champ and role else None
+        roles = {b.role for b in self.cache.builds_for_champion(champ)} if champ else set()
+        if champ and self.cache.load(champ, ARAM):
+            roles.add(ARAM)
+        return {
+            "championId": champion_id, "champion": champ, "assigned": "", "mode": "aram" if role == ARAM else "classic",
+            "role": build.role if build else role, "roles": sorted(roles, key=lambda r: ROLES.index(r) if r in ROLES else len(ROLES)),
+            "locked": False, "fetching": False, "opponent": None, "build": build.to_dict() if build else None,
+        }
 
     def _aram_mode(self) -> bool:
         """Champ select d'ARAM (et option `aram` active) : les builds viennent des stats d'ARAM."""
@@ -860,6 +876,11 @@ def make_app(ctrl: Controller) -> web.Application:
                     "variants": len(b.variants) or 1, "primaryStyle": b.primaryStyle, "keystone": b.perks[0],
                 })
         return web.json_response(rows)
+
+    @routes.get("/api/peek")
+    async def peek(req: web.Request) -> web.Response:
+        """Build de la bibliothèque, sans rien changer à l'état du champ select."""
+        return web.json_response({"current": ctrl.peek_build(int(req.query["championId"]), req.query.get("role", ""))})
 
     @routes.post("/api/open")
     async def open_build(req: web.Request) -> web.Response:

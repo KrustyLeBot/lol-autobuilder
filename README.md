@@ -55,6 +55,7 @@ Tout se règle dans **Réglages** (icône d'engrenage à gauche) :
 | Application automatique | applique le meilleur build dès que ton champion est verrouillé |
 | Alertes | fenêtre au premier plan et son quand c'est ton tour de bannir ou de choisir ; un son au choix pour chaque moment |
 | Builds en cache | « Tout télécharger » prépare les builds de tous les champions d'un coup (quelques minutes) et indique la date de la dernière récupération |
+| Sorts d'invocateur | désactivé : lolbuilds applique le build et les runes mais ne touche jamais à tes sorts (tu peux toujours choisir une paire à la main) |
 | Touche de Flash | Flash sur D, sur F, ou là où le build le met |
 | Thème | Hextech, Noxus, Piltover ou Ionia |
 | Mise à jour | indique ta version et installe la nouvelle en un clic quand elle sort |

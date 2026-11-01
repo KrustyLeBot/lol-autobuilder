@@ -67,7 +67,7 @@
   <main class="main">
     <section class="view" id="view-live" aria-live="polite"></section>
     <section class="view" id="view-library" hidden>
-      <div class="lib-head">
+      <div class="lib-head" id="lib-head">
         <div>
           <h1 class="lib-title">Builds en cache</h1>
           <p class="lib-sub" id="lib-sub"></p>
@@ -78,6 +78,7 @@
         </div>
       </div>
       <div class="lib-table" id="lib-table"></div>
+      <div class="lib-detail" id="lib-detail" hidden></div>
     </section>
     <section class="view" id="view-settings" hidden>
       <div class="lib-head">
@@ -112,6 +113,10 @@
           <label class="set-row switch" for="set-auto">
             <span class="set-txt"><b>Application automatique</b><small>Le build préféré est envoyé au client dès que ton champion est verrouillé</small></span>
             <input type="checkbox" id="set-auto"><span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+          <label class="set-row switch" for="set-spells">
+            <span class="set-txt"><b>Appliquer les sorts d'invocateur</b><small>Désactivé : lolbuilds ne touche jamais à tes sorts (tu peux toujours en choisir une paire à la main dans les propositions)</small></span>
+            <input type="checkbox" id="set-spells"><span class="switch-track"><span class="switch-thumb"></span></span>
           </label>
           <div class="set-row">
             <span class="set-txt"><b>Touche de Flash</b><small>Flash est placé sur cette touche quand le build contient Flash</small></span>
