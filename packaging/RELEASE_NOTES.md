@@ -1,6 +1,10 @@
+## Nouveautés
+
+- **Disco pick** : la musique est maintenant livrée avec l'application : « 夢の向こうへ », un morceau eurobeat créé avec Suno par progressivesubtleties471. Ton propre morceau reste prioritaire : pose un fichier `disco-music.mp3` dans `%USERPROFILE%\.lolbuilds`.
+
 ## Corrections
 
-- **Réglages** : cliquer dans le sommaire faisait défiler toute la fenêtre (barre de titre et menu sortaient de l'écran, la fenêtre devenait inutilisable). Seule la liste des réglages défile maintenant.
+- **Réglages** : cliquer sur un interrupteur (par exemple « Activer le Disco pick ») pouvait faire défiler toute la fenêtre, barre de titre et menu hors de l'écran. La fenêtre ne bouge plus.
 
 ## Mettre à jour
 

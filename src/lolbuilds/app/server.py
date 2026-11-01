@@ -38,6 +38,8 @@ from .lcu import LcuConnection, wait_for_client
 log = logging.getLogger(__name__)
 
 UI_DIR = Path(__file__).parent / "ui"
+# Musique du Disco pick livrée avec l'appli : « 夢の向こうへ », créée avec Suno par progressivesubtleties471.
+DISCO_MUSIC = UI_DIR / "audio" / "yume-no-mukou-e.mp3"
 APPLY_DEBOUNCE = 0.8  # s : évite de recréer une page de runes à chaque survol
 LIVE_DEBOUNCE = 0.6  # s : le client envoie les sessions en rafale
 COUNTER_MIN_GAMES = 300  # parties minimum dans le duel pour proposer un pick
@@ -192,8 +194,10 @@ class Controller:
         return settings
 
     def disco_music(self) -> Path | None:
-        """Musique du Disco pick posée par le joueur dans son dossier lolbuilds (sinon : boucle synthétisée par la page)."""
-        return next(iter(sorted(p for p in self.cfg.cache_dir.glob("disco-music.*") if p.suffix.lower() in MUSIC_TYPES)), None)
+        """Musique du Disco pick : celle posée par le joueur dans son dossier lolbuilds (disco-music.*), sinon celle
+        livrée avec l'appli ; sans fichier, la page joue sa boucle synthétisée."""
+        custom = sorted(p for p in self.cfg.cache_dir.glob("disco-music.*") if p.suffix.lower() in MUSIC_TYPES)
+        return custom[0] if custom else (DISCO_MUSIC if DISCO_MUSIC.is_file() else None)
 
     def _last_prefetch(self) -> str | None:
         dates = [b.fetched_at for b in self.cache.all_builds()]

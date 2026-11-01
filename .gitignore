@@ -9,6 +9,7 @@ release/
 
 # musique perso du Disco pick : jamais dans le dépôt public
 *.mp3
+!src/lolbuilds/app/ui/audio/*.mp3
 *.m4a
 *.ogg
 *.wav

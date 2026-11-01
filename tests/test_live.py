@@ -747,7 +747,8 @@ def test_disco_settings_are_validated(ctrl):
 
 
 def test_disco_music_is_the_players_file(ctrl):
-    assert ctrl._settings()["disco"]["music"] == ""  # boucle intégrée
+    assert ctrl._settings()["disco"]["music"] == "yume-no-mukou-e.mp3"  # musique livrée avec l'appli
+    assert server.DISCO_MUSIC.is_file()
     (ctrl.cfg.cache_dir / "disco-music.mp3").write_bytes(b"ID3")
     (ctrl.cfg.cache_dir / "disco-music.txt").write_text("pas de la musique")
     assert ctrl._settings()["disco"]["music"] == "disco-music.mp3"
