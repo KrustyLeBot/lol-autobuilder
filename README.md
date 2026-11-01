@@ -4,11 +4,6 @@
 
 Une alternative légère à Blitz ou Porofessor, centrée sur une seule chose : quand tu choisis ton champion, lolbuilds crée la bonne page de runes, règle tes sorts d'invocateur et ajoute un item set dans la boutique. Sans publicité, sans compte, sans clé API.
 
-<p align="center">
-  <a href="docs/media/disco-pick.mp4"><img src="docs/media/disco-pick.gif" alt="Le Disco pick : roulette eurobeat qui tire au sort le champion, son build et ses sorts, puis le verrouille" width="720"></a>
-  <br><sub>Le <b>Disco pick</b> en action (démo, accéléré). <a href="docs/media/disco-pick.mp4">Voir la vidéo avec le son ▶</a></sub>
-</p>
-
 ## Ce que ça fait
 
 - **Build automatique** : dès que tu verrouilles ton champion, la page de runes, les sorts (Flash sur D ou F, au choix) et l'item set sont envoyés au client.
