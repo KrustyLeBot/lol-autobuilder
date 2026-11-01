@@ -1,6 +1,6 @@
 """lolbuilds : remplaçant léger de Blitz pour l'import automatique de builds LoL."""
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 # Rôles canoniques (format LCU `assignedPosition`, en minuscules).
 ROLES = ("top", "jungle", "middle", "bottom", "utility")

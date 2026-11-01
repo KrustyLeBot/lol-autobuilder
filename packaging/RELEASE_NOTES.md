@@ -1,7 +1,6 @@
 ## Corrections
 
-- **« lolbuilds est déjà ouvert (ou le port 8765 est occupé) » alors qu'il ne l'était pas** : sur certains PC, le port local 8765 est pris par un autre logiciel ou réservé par Windows (fréquent avec Hyper-V, WSL ou Docker). lolbuilds prend maintenant le port libre suivant et démarre normalement.
-- **lolbuilds relancé alors qu'il tourne déjà** : sa fenêtre revient au premier plan au lieu d'afficher un message.
+- **Réglages** : cliquer dans le sommaire faisait défiler toute la fenêtre (barre de titre et menu sortaient de l'écran, la fenêtre devenait inutilisable). Seule la liste des réglages défile maintenant.
 
 ## Mettre à jour
 
