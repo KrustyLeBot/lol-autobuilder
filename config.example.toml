@@ -8,6 +8,7 @@ min_role_rate = 0.10        # un rôle est suivi s'il représente au moins 10 % 
 request_interval = 0.5      # secondes entre deux requêtes OP.GG
 live = true                 # champ select : récupère le build au moment du pick (gardé en cache pour la journée)
 matchup = true              # champ select : + les builds contre l'adversaire de lane
+aram = true                 # ARAM : builds issus des stats d'ARAM ; dans les autres modes, proposés en « Atypique » (1 requête de plus par champion)
 
 [prefetch]
 nightly = false             # true : la tâche planifiée récupère tous les champions chaque nuit

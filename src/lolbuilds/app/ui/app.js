@@ -14,7 +14,7 @@ let timerEnds = null;  // hors du HTML : sinon chaque event changerait le rendu
 let lastTurn = null;  // id de l'action LCU pour laquelle on a déjà alerté
 let turnTotal = null;  // durée de l'action en cours (ms), si le client ne la donne pas
 
-const ROLE_LABEL = { top: "Top", jungle: "Jungle", middle: "Mid", bottom: "ADC", utility: "Support" };
+const ROLE_LABEL = { top: "Top", jungle: "Jungle", middle: "Mid", bottom: "ADC", utility: "Support", aram: "ARAM" };
 const ROLE_ORDER = ["top", "jungle", "middle", "bottom", "utility"];
 const ROLE_SVG = {
   top: '<path d="M2 2h9.5L8.5 5H5v3.5l-3 3z" fill="currentColor"/><path d="M9 9h5v5H9z" fill="currentColor" opacity=".35"/>',
@@ -513,7 +513,7 @@ function buildHtml(cur, b, cs, enter) {
     const core = (v.blocks.find((x) => x.key === "core") || v.blocks.find((x) => /^Core/.test(x.type)))?.items || [];
     const boots = (v.blocks.find((x) => x.key === "boots") || v.blocks.find((x) => /^Bottes/.test(x.type)))?.items?.[0];
     const sp = orient(v.spells, flashKey);
-    const tags = [...(v.tags || []).map((t) => `<span class="tag${t === "Le plus joué" ? " alt" : t.startsWith("Contre ") ? " vs" : ""}">${esc(t)}</span>`),
+    const tags = [...(v.tags || []).map((t) => `<span class="tag${t === "Le plus joué" ? " alt" : t.startsWith("Contre ") ? " vs" : t.startsWith("Atypique") ? " atypical" : ""}">${esc(t)}</span>`),
       v.details?.runes?.fallback ? '<span class="tag warn">Échantillon faible</span>' : ""].join("");
     const isApplied = applied && applied.variant === i;
     const action = !cs ? "Voir" : isApplied ? "Appliqué" : state.busy && i === sel ? "Application…" : "Appliquer";

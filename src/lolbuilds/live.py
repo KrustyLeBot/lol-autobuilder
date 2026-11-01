@@ -139,6 +139,7 @@ class LiveBuilds:
         today = date.today()
         with self._lock:
             targets = self.source.targets()
+            targets += self.source.aram_targets({t.champion for t in targets})
         stale = [t for t in targets if force or not self.cache.is_fresh(t.champion, t.role, today)]
         counts = {"total": len(targets), "fresh": len(targets) - len(stale), "updated": 0, "failed": 0}
         if stale:

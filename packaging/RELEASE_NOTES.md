@@ -1,13 +1,8 @@
 ## Nouveautés
 
-- **Version portable en un seul fichier** : `lolbuilds-portable-….exe` remplace le zip, qui plantait au démarrage. Il se met à jour tout seul (Réglages › Mise à jour), comme la version installée : le nouvel exe est téléchargé, vérifié, puis remplace l'ancien.
-- **Tout télécharger** : Réglages › Builds en cache prépare les builds de tous les champions d'un coup, avec la progression et la date de la dernière récupération. Les builds se récupèrent aussi tout seuls quand tu choisis un champion.
-- **Plein écran** : un jeu en plein écran garde toujours la priorité. L'épingle se retire tant qu'il est au premier plan et revient ensuite, la fenêtre ne lui vole pas le focus, et le son d'alerte retentit quand même.
-
-## Corrections
-
-- **Épingle de la fenêtre** : elle ne fait plus planter l'application.
-- **Numéro de version** : la version affichée par l'appli est de nouveau celle de la release (elle proposait sinon une mise à jour déjà installée).
+- **ARAM** : en ARAM, lolbuilds applique maintenant un build issu des statistiques d'ARAM d'OP.GG (runes, sorts, items et item set pour l'Abîme hurlant) au lieu d'un build de lane de la faille.
+- **Build atypique** : dans les autres modes, le build ARAM du champion est proposé en dernier, étiqueté « Atypique : build ARAM ». Il n'est jamais appliqué par défaut.
+- **Tout télécharger** récupère aussi les builds ARAM. Pour tout désactiver : `aram = false` dans `config.toml` (section `[opgg]`).
 
 ## Mettre à jour
 

@@ -177,3 +177,23 @@ def test_client_gives_up(monkeypatch):
     client = OpggClient(interval=0, http=httpx.Client(transport=transport))
     with pytest.raises(BuildSourceError):
         client.call("x", {}, retries=2)
+
+
+def test_aram_build_from_analysis():
+    b = build_from_analysis(fizz(), champion="Fizz", champion_id=105, role="aram", patch="16.21")
+    assert b.role == "aram" and b.name == "Fizz ARAM"
+    assert b.itemSet["title"] == "[Auto] Fizz ARAM 16.21"
+    assert b.itemSet["associatedMaps"] == [12]  # Abîme hurlant
+    assert b.variants[0]["tags"] == ["Build ARAM"]
+    classic = build_from_analysis(fizz(), champion="Fizz", champion_id=105, role="middle", patch="16.21")
+    assert classic.itemSet["associatedMaps"] == [11]
+
+
+def test_aram_targets_follow_the_option():
+    from lolbuilds.config import OpggSettings
+
+    static = StaticData(version="16.21.1", champions=ChampionCatalog(by_key={}, names={}), items=ItemCatalog())
+    on = OpggSource(static, OpggSettings(), client=None)
+    assert on.aram_targets(["Fizz", "Ahri", "Fizz"]) == [Target("Ahri", "aram"), Target("Fizz", "aram")]
+    off = OpggSource(static, OpggSettings(aram=False), client=None)
+    assert off.aram_targets(["Fizz"]) == []
