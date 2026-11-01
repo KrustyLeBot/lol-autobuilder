@@ -275,6 +275,7 @@ img { display: block; max-width: 100%; }
 }
 .turn.pick { color: var(--gold-hi); background: color-mix(in srgb, var(--gold) 14%, var(--ink-1)); }
 .turn.ban { color: var(--loss); background: color-mix(in srgb, var(--loss) 12%, var(--ink-1)); }
+.turn.plan { color: var(--text-dim); background: color-mix(in srgb, var(--teal) 8%, var(--ink-1)); }
 .turn-fill {
   position: absolute; inset: 0; z-index: -1; transform-origin: left center; transform: scaleX(0);
   background: currentColor; opacity: .16; transition: transform .25s linear, opacity .3s var(--ease);

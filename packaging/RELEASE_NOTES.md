@@ -1,10 +1,12 @@
-## Nouveau : mise à jour en un clic
+## Corrections
 
-- **Réglages › Mise à jour** affiche ta version et vérifie s'il en existe une plus récente (aussi au démarrage : une pastille apparaît sur Réglages).
-- **Mettre à jour** télécharge l'installateur, vérifie son empreinte SHA-256, puis lolbuilds se ferme et se rouvre tout seul sur la nouvelle version. Tes réglages et tes raccourcis sont conservés.
-- Avec la version portable, le bouton ouvre la page de téléchargement.
+- **Prépick** : au début du champ select, lolbuilds n'affiche plus « À toi de bannir » pendant la phase de déclaration. Un bandeau « Prépick : déclare ton champion » s'affiche à la place, et le compte à rebours du ban démarre au vrai début des bans. Les bans suggérés restent visibles pendant le prépick pour préparer ton ban.
+- **Sons d'alerte** : les sons de ton tour de ban et de pick sont de nouveau joués. Ils pouvaient rester muets tant que tu n'avais pas cliqué dans la fenêtre de lolbuilds.
 
-> Tu as la 0.1.0 ? Elle n'a pas encore ce bouton : installe cette version une fois avec `lolbuilds-setup-0.2.0.exe`, les suivantes arriveront depuis l'application.
+## Mettre à jour
+
+- Depuis la **0.2.0** : Réglages › Mise à jour › **Mettre à jour**.
+- Depuis la **0.1.0** : télécharge et lance `lolbuilds-setup-0.2.1.exe` ci-dessous ; les versions suivantes arriveront depuis l'application.
 
 ## Télécharger
 

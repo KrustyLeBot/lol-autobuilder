@@ -92,7 +92,7 @@ let wasInChampSelect = null;  // null : premier état reçu, on n'alerte pas pou
 function checkTurn() {
   const cs = state.champSelect;
   const turn = cs?.turn;
-  const id = turn ? `${turn.type}:${turn.id}` : null;
+  const id = turn ? `${turn.type}:${turn.id}` : cs?.stage === "planning" ? "planning" : null;
   const events = [];
   if (id !== lastTurn) {
     lastTurn = id;
@@ -133,6 +133,13 @@ const SOUND_PRESETS = {
 };
 
 let audio;
+// Les navigateurs bloquent le son tant que la page n'a reçu aucun clic : on prépare le contexte audio
+// au premier geste (l'exe lance aussi WebView2 avec --autoplay-policy=no-user-gesture-required).
+for (const ev of ["pointerdown", "keydown"]) {
+  window.addEventListener(ev, () => {
+    try { audio = audio || new AudioContext(); if (audio.state === "suspended") audio.resume(); } catch { /* sans audio */ }
+  }, { once: true, capture: true });
+}
 function playSound(name, volume = 0.6) {
   const notes = SOUND_PRESETS[name];
   if (!notes || volume <= 0) return;
@@ -355,6 +362,10 @@ function draftHtml(cs, cur) {
 
 function turnHtml(cs) {
   const t = cs.turn;
+  if (!t && cs.stage === "planning") {
+    return `<div class="turn plan" role="status"><span class="turn-fill js-turn-fill" aria-hidden="true"></span><b>Prépick : déclare ton champion</b>
+      ${timerEnds ? '<span class="timer num js-timer"></span>' : ""}</div>`;
+  }
   if (!t) return "";
   const what = t.type === "ban" ? "bannir" : "choisir ton champion";
   return `<div class="turn ${t.type}" role="status"><span class="turn-fill js-turn-fill" aria-hidden="true"></span><span class="turn-dot"></span><b>À toi de ${what}</b>

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 import threading
 import time
@@ -106,6 +107,8 @@ def run(args: argparse.Namespace) -> int:
         threading.Event().wait()  # jusqu'à Ctrl+C
         return 0
 
+    # Sons d'alerte sans clic préalable : WebView2 applique sinon la politique d'autoplay de Chromium.
+    os.environ.setdefault("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--autoplay-policy=no-user-gesture-required")
     import webview  # import local : seulement pour le mode fenêtre
 
     api = WindowApi()

@@ -84,8 +84,8 @@ def make_demo_builds(static: StaticData, runes: list[dict[str, Any]], cache: Bui
         cache.save(build)
 
 
-# Cycle de la démo (secondes) : mon ban, tour des autres, mon pick (Ahri survolée), Ahri verrouillée.
-DEMO_STEPS = [("ban", 12), ("wait", 6), ("pick", 10), ("locked", 20)]
+# Cycle de la démo (secondes) : prépick, mon ban, tour des autres, mon pick (Ahri survolée), Ahri verrouillée.
+DEMO_STEPS = [("planning", 8), ("ban", 12), ("wait", 6), ("pick", 10), ("locked", 20)]
 # Bans suggérés affichés pendant le tour de ban de la démo (pas d'appel OP.GG en démo).
 DEMO_BANS = [  # (championId, winrate du champion contre Ahri, parties)
     (238, 0.531, 6120), (7, 0.528, 4380), (55, 0.524, 3950), (105, 0.519, 4210), (134, 0.512, 7990), (517, 0.508, 2870),
@@ -109,8 +109,9 @@ def demo_session(me: int, phase_ends: float, step: str = "locked") -> dict[str, 
     intent = 0 if step == "locked" else me  # Ahri déclarée dès le début, comme dans le client
     allies = [(1, 86, "top"), (2, 64, "jungle"), (3, picked, "middle"), (4, 222, "bottom"), (5, 0, "utility")]
     mine = [
-        {"id": 3, "actorCellId": 3, "type": "ban", "championId": 0 if step == "ban" else 7,
-         "completed": step != "ban", "isInProgress": step == "ban", "isAllyAction": True},
+        # Comme le vrai client : pendant le prépick, le ban est déjà marqué « en cours ».
+        {"id": 3, "actorCellId": 3, "type": "ban", "championId": 0 if step in ("planning", "ban") else 7,
+         "completed": step not in ("planning", "ban"), "isInProgress": step in ("planning", "ban"), "isAllyAction": True},
         {"id": 13, "actorCellId": 3, "type": "pick", "championId": picked or intent,
          "completed": step == "locked", "isInProgress": step == "pick", "isAllyAction": True},
     ]
@@ -129,7 +130,8 @@ def demo_session(me: int, phase_ends: float, step: str = "locked") -> dict[str, 
             {"type": "ban", "completed": True, "championId": 875, "isAllyAction": False},
             *mine,
         ]],
-        "timer": {"phase": "BAN_PICK", "adjustedTimeLeftInPhase": max(0, int((phase_ends - time.time()) * 1000)),
+        "timer": {"phase": "PLANNING" if step == "planning" else "BAN_PICK",
+                  "adjustedTimeLeftInPhase": max(0, int((phase_ends - time.time()) * 1000)),
                   "totalTimeInPhase": total},
     }
 
@@ -184,7 +186,7 @@ async def start_demo(ctrl: Any) -> None:
         start = time.time()
         while True:
             step, ends = demo_step(time.time(), start)
-            ctrl.state["banSuggestions"] = demo_bans(ahri) if step == "ban" else None
+            ctrl.state["banSuggestions"] = demo_bans(ahri) if step in ("planning", "ban") else None
             await ctrl.on_session(demo_session(ahri, ends, step))
             await asyncio.sleep(1)
 

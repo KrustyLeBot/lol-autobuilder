@@ -197,12 +197,16 @@ class Controller:
                     bans.append({"championId": a["championId"], "ally": a.get("isAllyAction", False)})
                 if a.get("actorCellId") == cell and a.get("type") in ("ban", "pick"):
                     mine.append(a)
-        current = next((a for a in mine if a.get("isInProgress") and not a.get("completed")), None)
-        running = {a.get("type") for group in s.get("actions", []) for a in group
-                   if a.get("isInProgress") and not a.get("completed")}
-        # Étape globale (pour les sons de phase) : bans, picks, sinon la phase du minuteur (planning...).
-        stage = next((t for t in ("ban", "pick") if t in running), str((s.get("timer") or {}).get("phase", "")).lower())
         timer = s.get("timer") or {}
+        phase = str(timer.get("phase", ""))
+        # Pendant le prépick (PLANNING), le client marque déjà les bans « en cours » : seule la phase
+        # BAN_PICK du minuteur dit qu'une action est réellement à faire.
+        drafting = phase == "BAN_PICK"
+        current = next((a for a in mine if a.get("isInProgress") and not a.get("completed")), None) if drafting else None
+        running = {a.get("type") for group in s.get("actions", []) for a in group
+                   if a.get("isInProgress") and not a.get("completed")} if drafting else set()
+        # Étape globale (sons de phase, bandeau) : bans, picks, sinon la phase (planning, finalization...).
+        stage = next((t for t in ("ban", "pick") if t in running), phase.lower())
         left = timer.get("adjustedTimeLeftInPhase") or 0
         return {
             "allies": allies,

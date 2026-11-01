@@ -127,6 +127,7 @@ def test_demo_cycle_has_my_ban_and_pick_turns(ctrl):
         summary = ctrl._summarize_session(demo_session(103, ends, step))
         seen[step] = (summary["turn"], summary["banPending"])
         t += 1
+    assert seen["planning"] == (None, True)  # prépick : pas encore mon tour, ban à préparer
     assert seen["ban"] == ({"id": 3, "type": "ban"}, True)
     assert seen["wait"] == (None, False)
     assert seen["pick"] == ({"id": 13, "type": "pick"}, False)
@@ -153,3 +154,4 @@ def test_session_stage(ctrl):
     assert ctrl._summarize_session(demo_session(103, 0, "ban"))["stage"] == "ban"
     assert ctrl._summarize_session(demo_session(103, 0, "pick"))["stage"] == "pick"
     assert ctrl._summarize_session(demo_session(103, 0, "locked"))["stage"] == "ban_pick"
+    assert ctrl._summarize_session(demo_session(103, 0, "planning"))["stage"] == "planning"

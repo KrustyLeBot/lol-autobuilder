@@ -279,21 +279,32 @@ def test_counter_picks_skip_banned_and_hidden_once_locked(ctrl):
 
 # --------------------------------------------------------------------------- mon tour, bans suggérés
 
-def ban_phase(intent=0, my_ban_done=False, in_progress=True, enemies=(), bans=()):
+def ban_phase(intent=0, my_ban_done=False, in_progress=True, enemies=(), bans=(), phase="BAN_PICK"):
     s = before_pick(list(enemies), bans=bans)
     s["myTeam"][0].update(championId=0, championPickIntent=105)  # un allié veut Fizz : jamais suggéré en ban
     s["myTeam"][1]["championPickIntent"] = intent
     s["actions"].append([{"id": 11, "actorCellId": 2, "type": "ban", "championId": 0,
                           "completed": my_ban_done, "isInProgress": in_progress and not my_ban_done}])
+    s["timer"] = {"phase": phase, "adjustedTimeLeftInPhase": 30000, "totalTimeInPhase": 30000}
     return s
 
 
 def test_my_turn_is_detected(ctrl):
     asyncio.run(ctrl.on_session(ban_phase()))
     assert ctrl.state["champSelect"]["turn"] == {"id": 11, "type": "ban"}
-    assert ctrl.state["champSelect"]["banPending"]
+    assert ctrl.state["champSelect"]["banPending"] and ctrl.state["champSelect"]["stage"] == "ban"
     asyncio.run(ctrl.on_session(ban_phase(in_progress=False)))  # pas encore à moi
     assert ctrl.state["champSelect"]["turn"] is None and ctrl.state["champSelect"]["banPending"]
+
+
+def test_prepick_is_not_a_ban_turn(ctrl):
+    # Pendant le prépick, le client marque déjà le ban « en cours » : ce n'est pas encore mon tour.
+    asyncio.run(ctrl.on_session(ban_phase(phase="PLANNING")))
+    cs = ctrl.state["champSelect"]
+    assert cs["turn"] is None and cs["stage"] == "planning"
+    assert cs["banPending"]  # les bans suggérés peuvent déjà s'afficher pour préparer son ban
+    asyncio.run(ctrl.on_session(ban_phase(phase="BAN_PICK")))  # la vraie phase de bans commence
+    assert ctrl.state["champSelect"]["turn"] == {"id": 11, "type": "ban"}
 
 
 def test_ban_suggestions_from_tier_list(ctrl):
