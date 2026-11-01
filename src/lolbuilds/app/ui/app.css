@@ -706,10 +706,10 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
 .turn.stage:not(.ban):not(.pick):not(.plan):not(.game) .crumb.on { color: var(--text); }
 .crumb-sep { color: var(--text-mute); letter-spacing: 0; }
 
-.live { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px; padding: 18px 24px 28px; align-items: start; }
-.live-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; position: sticky; top: 62px; }
+.live { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; padding: 14px 20px 16px; align-items: start; }
+.live-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; position: sticky; top: 58px; }
 .live-main .detail-2 > .panel:only-child { grid-column: 1 / -1; }
-.live-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.live-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .live-main .section { padding: 0; }
 .live-main .draft { padding: 10px 14px; border: 1px solid var(--line-soft); }
 .live-main .draft .slot { width: 34px; height: 34px; }
@@ -724,7 +724,7 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
 
 .portrait {
   position: relative; isolation: isolate; overflow: hidden;
-  height: 290px; display: flex; flex-direction: column; justify-content: flex-end;
+  height: 230px; display: flex; flex-direction: column; justify-content: flex-end;
   padding: 16px; border: 1px solid var(--gold-deep); background: var(--ink-1);
 }
 .portrait-splash {
@@ -811,6 +811,112 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
 .opp-col .tag { justify-self: start; }
 .duel-tip { margin: 4px 0 0; padding: 8px 10px; font-size: 12px; line-height: 1.45; color: var(--text-dim); border-left: 2px solid var(--line); background: var(--ink-2); }
 
+/* ------------------------------------------------------------------ tout sur un écran (1280×900 sans défiler) */
+.portrait .hero-name, :root[data-realm] .portrait .hero-name { font-size: 32px; }
+.portrait .hero-title { display: none; }
+.vrow { padding: 9px 11px; gap: 6px 10px; grid-template-columns: 34px minmax(0, 1fr) auto; }
+.vrow .keystone { width: 34px; height: 34px; padding: 2px; }
+.vrow .vname { font-size: 14px; }
+.vrow .vtrees { display: none; }
+.vrow .vwr strong { font-size: 17px; }
+.vrow-foot { padding-top: 6px; }
+.vrow-foot .icon { width: 22px; height: 22px; }
+
+.live-main .draft { display: flex; flex-wrap: wrap; gap: 14px; padding: 9px 14px; }
+.live-main .draft .slot { width: 30px; height: 30px; }
+.live-main .bans { margin-left: 4px; }
+.live-main .bans .slot { width: 20px; height: 20px; }
+.draft-note { margin-left: auto; font-size: 11.5px; color: var(--text-mute); }
+.draft-applied { margin-left: auto; display: flex; gap: 12px; font-size: 12px; }
+.draft-applied .ok { color: var(--win); }
+.draft-applied .ko { color: var(--loss); cursor: help; }
+.live-main .matchup { margin-top: -6px; padding: 6px 14px; font-size: 12px; }
+.live-main .section-head { margin-bottom: 8px; }
+.live-main .counters { padding: 10px 14px; }
+.live-main .counters .cp-list { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.live-main .counters .cp-list > :nth-child(n+6) { display: none; }
+.live-main .cp { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 7px; padding: 5px 8px 5px 5px; }
+.live-main .cp img { width: 28px; height: 28px; }
+.live-main .cp-games { display: none; }
+
+.live .panel { padding: 12px 14px; }
+.live .panel h3 { margin-bottom: 10px; font-size: 11px; }
+.live .runes { gap: 14px; }
+.live .tree-head { margin-bottom: 8px; font-size: 12.5px; }
+.live .tree-head img { width: 16px; height: 16px; }
+.live .rune-list { gap: 6px; }
+.live .rune { grid-template-columns: 26px minmax(0, 1fr); gap: 8px; }
+.live .rune img { width: 26px; height: 26px; padding: 1px; }
+.live .rune.key { grid-template-columns: 34px minmax(0, 1fr); margin-bottom: 2px; }
+.live .rune.key img { width: 34px; height: 34px; }
+.live .rune-name { font-size: 12.5px; }
+.live .rune.key .rune-name { font-size: 14px; }
+.live .shards { gap: 4px; margin-top: 8px; }
+.live .shard { padding: 3px 6px 3px 4px; font-size: 10.5px; }
+.live .blocks { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+.live .block-head { margin-bottom: 5px; font-size: 10.5px; }
+.live .block-head b { font-size: 11.5px; }
+.live .block-items { gap: 4px; }
+.live .block-items .icon { width: 30px; height: 30px; }
+.live .spell-opts { gap: 4px; }
+.live .spell-opt { padding: 5px 8px; gap: 8px; }
+.live .spell-opt .pair .icon { width: 24px; height: 24px; }
+.live .spell-opt .label { font-size: 12px; }
+.live .spell-opt .label small { display: inline; margin-left: 6px; font-size: 10.5px; }
+.live .spell-opt .wr { font-size: 13px; }
+.live .spell-opt .wr small { display: none; }
+
+.live .keyhint { margin-top: 6px; font-size: 11px; }
+.live .skills { gap: 2px; }
+.live .sk, .live .sk-key { height: 16px; line-height: 16px; }
+
+/* En jeu : build en résumé à gauche */
+.game-build { padding: 10px 12px; }
+.game-build .gb-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.game-build .gb-head h3 { margin: 0; }
+.gb-spells { display: flex; gap: 4px; }
+.gb-spells .icon { width: 22px; height: 22px; }
+.game-build .rune { grid-template-columns: 20px minmax(0, 1fr); }
+.game-build .rune img { width: 20px; height: 20px; }
+.game-build .rune.key { grid-template-columns: 26px minmax(0, 1fr); }
+.game-build .rune.key img { width: 26px; height: 26px; }
+.game-build .rune-name { font-size: 11.5px; }
+.game-build .rune.key .rune-name { font-size: 13px; }
+.game-build .block-items .icon { width: 26px; height: 26px; }
+.game-build h3 { margin-bottom: 8px; }
+
+/* En jeu : duels par lane */
+.lanes { display: grid; gap: 6px; }
+.lanes-head { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 0 10px; }
+.lanes-head .ally { color: var(--teal); }
+.lanes-head .enemy { color: var(--loss); text-align: right; }
+.lane { display: grid; grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr); gap: 10px; align-items: center;
+  padding: 8px 10px; background: var(--ink-1); border: 1px solid var(--line-soft); }
+.lane.mine { border-color: var(--gold-deep); background: color-mix(in srgb, var(--gold) 7%, var(--ink-1)); }
+.ln-role { display: flex; flex-direction: column; align-items: center; gap: 3px; font: 600 10px/1 var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--text-mute); }
+.ln-role svg { width: 14px; height: 14px; }
+.lane.mine .ln-role { color: var(--gold); }
+.ln-p { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 9px; align-items: center; min-width: 0; }
+.ln-p.enemy { grid-template-columns: auto minmax(0, 1fr) 36px; }
+.ln-p.enemy .ln-champ { order: 3; }
+.ln-p.enemy .ln-info { order: 2; text-align: right; }
+.ln-p.enemy .ln-tags { order: 1; justify-content: flex-start; }
+.ln-champ { width: 36px; height: 36px; border: 1px solid var(--line); }
+.ln-p.me .ln-champ { border-color: var(--gold); }
+.ln-p.opp .ln-champ { border-color: var(--loss); }
+.ln-info { display: grid; gap: 3px; min-width: 0; }
+.ln-name { font: 600 12.5px/1.1 var(--f-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ln-name small { font: 400 11px var(--f-body); color: var(--gold-hi); }
+.ln-rank { font-size: 11.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ln-rank b { color: var(--text); font-weight: 600; }
+.ln-rank b.good { color: var(--win); } .ln-rank b.bad { color: var(--loss); }
+.ln-line { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ln-line.dim { color: var(--text-mute); }
+.ln-tags { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; max-width: 150px; }
+.ln-tags .tag { padding: 2px 5px; font-size: 9px; }
+.live-main .opp-view { padding: 12px 14px; }
+.opp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 @media (max-width: 1060px) {
   .live { grid-template-columns: minmax(0, 1fr); }
   .live-side { position: static; }
@@ -823,3 +929,5 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
   .turn.stage .timer { margin-left: auto; }
   .live-main .detail-2 { grid-template-columns: minmax(0, 1fr); }
 }
+
+.game-build .block-head span { display: none; }

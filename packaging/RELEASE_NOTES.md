@@ -1,18 +1,11 @@
 ## Nouveautés
 
-- **Nouvelle mise en page, la même à chaque étape** :
-  - une **barre d'étape** reste tout en haut : ce qui se passe (« À toi de bannir », « Prépick »…), le fil Prépick › Bans › Picks › Finalisation › En jeu et le compte à rebours ;
-  - **à gauche**, le portrait de ton champion et ses builds en lignes compactes (touches 1 à 3) ;
-  - **à droite**, la draft, les suggestions de l'étape (bans pendant ton ban, bons picks avant ton pick), puis les runes, les items, les sorts et **l'ordre des compétences**.
-- **Pendant la partie**, l'écran garde ton build et ajoute en dessous :
-  - **ton équipe** (comme avant) ;
-  - **ton vis-à-vis** : ses dernières parties (victoires, KDA, nombre de parties sur son champion, série en cours) et la lecture du duel par OP.GG (avantage en lane, en solo kills, conseil contre son champion, en anglais) ;
-  - **l'équipe adverse**, avec le rang et les résultats de chaque joueur.
-- Tant qu'aucun champion n'est survolé, le portrait affiche l'emblème de ton thème.
-
-## Corrections
-
-- Un joueur non classé n'affiche plus « Saison : 0 % sur 0 parties ».
+- **Tout tient sur un écran, sans défiler** (fenêtre de 1280×900) :
+  - portrait et builds plus compacts ;
+  - l'état du build (✓ Runes · Sorts · Item set) passe sur la ligne de la draft ;
+  - bans suggérés et bons picks sur une seule ligne ;
+  - runes, items, sorts et compétences resserrés.
+- **En jeu, duels par lane** : une ligne par poste avec ton joueur face à son adversaire (rang, saison, résultats sur son champion). Ta lane est surlignée et ton vis-à-vis est détaillé dessous (dernières parties, duel selon OP.GG). Le build appliqué passe en résumé sous le portrait.
 
 ## Mettre à jour
 

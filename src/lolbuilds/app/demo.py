@@ -228,6 +228,8 @@ async def start_demo(ctrl: Any) -> None:
                 await asyncio.sleep(1)
                 continue
             ctrl.state["phase"], ctrl.state["team"] = "ChampSelect", None
+            if step == "empty":
+                ctrl.state["applied"] = None  # nouvelle partie de la démo : rien n'est encore appliqué
             ctrl.state["banSuggestions"] = demo_bans(ahri) if step in ("planning", "ban") else None
             await ctrl.on_session(demo_session(ahri, ends, step))
             await asyncio.sleep(1)
