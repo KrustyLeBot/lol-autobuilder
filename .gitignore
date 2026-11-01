@@ -6,3 +6,11 @@ config.toml
 build/
 dist/
 release/
+
+# musique perso du Disco pick : jamais dans le dépôt public
+*.mp3
+*.m4a
+*.ogg
+*.wav
+*.flac
+screenshots-*/

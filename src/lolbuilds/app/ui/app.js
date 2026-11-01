@@ -214,6 +214,7 @@ function renderSettings() {
   applyTheme(set.theme);
   renderUpdate();
   renderBuilds();
+  renderDiscoSettings();
 }
 
 /** Section « Mise à jour » : version installée, dernière release GitHub, bouton d'installation. */
@@ -330,7 +331,7 @@ function renderLive() {
         + (cur && b ? detailHtml(b, variants[sel], cs) : "")
         + (cur && !b ? noBuildHtml(cur) : "");
     }
-    html = stageHtml(cs, team) + `<div class="live"><aside class="live-side">${portraitHtml(cur, cs)}${side}</aside>
+    html = stageHtml(cs, team) + `<div class="live"><aside class="live-side">${portraitHtml(cur, cs)}${cs ? discoButtonHtml() : ""}${side}</aside>
       <div class="live-main">${main}</div></div>`;
   }
   // Le client envoie des events en rafale : on ne touche au DOM que si le rendu change.
@@ -915,6 +916,8 @@ $("#set-sounds").addEventListener("change", (e) => {
   playSound(sel.value, state?.settings?.volume);
 });
 $("#view-settings").addEventListener("click", (e) => {
+  const jump = e.target.closest("[data-setjump]");
+  if (jump) $(`#${jump.dataset.setjump}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const test = e.target.closest("[data-testsound]");
   if (test) playSound($(`select[data-sound="${test.dataset.testsound}"]`).value, state?.settings?.volume);
   const theme = e.target.closest("[data-theme]");

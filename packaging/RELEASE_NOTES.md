@@ -1,7 +1,13 @@
 ## Nouveautés
 
-- **Profils des joueurs bien plus rapides en jeu** : les 10 profils OP.GG (et l'historique de ton vis-à-vis) sont récupérés en même temps au lieu de l'un après l'autre, une dizaine de secondes au lieu d'environ une minute.
-- **Affichage d'un coup** : pendant le chargement, une barre « Profils OP.GG des joueurs… 6 / 10 » ; les duels par lane apparaissent tous ensemble une fois les profils arrivés. Si un profil traîne plus de 20 s, les autres s'affichent quand même et il se complète à son arrivée.
+- **Disco pick** (désactivé par défaut, à activer dans Réglages › Disco pick) : pendant ton tour de pick, le bouton **DISCO PICK ››** lance 15 secondes de roulette eurobeat (grille néon, compte-tours, VU-mètre à LED, musique). Le hasard choisit un champion que tu possèdes dans ta lane (ni banni ni pris), un de ses builds OP.GG et tes sorts, puis le **verrouille** après 3 secondes : pas de marche arrière, on assume. L'écran reste jusqu'au lancement de la partie (la croix le ferme, le tirage va quand même au bout).
+  - Réglages : champions de ta lane ou tous, build le plus joué ou au hasard, sorts du build ou « Chaos total », lumières douces / disco / strobo.
+  - Musique : une boucle eurobeat intégrée, ou ton propre morceau : pose un fichier `disco-music.mp3` dans le dossier `%USERPROFILE%\.lolbuilds`.
+- **Page Réglages réorganisée** : un sommaire à gauche et une carte par sujet (Champ select, Alertes et sons, Disco pick, Thème, Builds en cache, Mise à jour).
+
+## Corrections
+
+- Le mode démo garde ses propres réglages : y tester une option ne la change plus dans l'application.
 
 ## Mettre à jour
 

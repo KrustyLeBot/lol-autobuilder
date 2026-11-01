@@ -689,3 +689,65 @@ def test_slow_profile_does_not_block_the_others(ctrl, monkeypatch):
 
     asyncio.run(scenario())
     assert "partial" in statuses and statuses[-1] == "ok"  # affiché sans attendre le retardataire
+
+
+# --------------------------------------------------------------------------- Disco pick
+
+def pick_phase(enemies=(134,)):
+    s = before_pick(list(enemies))
+    s["actions"].append([{"id": 21, "actorCellId": 2, "type": "pick", "championId": 0, "completed": False, "isInProgress": True}])
+    s["timer"] = {"phase": "BAN_PICK", "adjustedTimeLeftInPhase": 30000, "totalTimeInPhase": 30000}
+    return s
+
+
+def test_disco_pick_is_off_by_default(ctrl):
+    asyncio.run(ctrl.on_session(pick_phase()))
+    assert not asyncio.run(ctrl.disco_roll())["ok"]
+
+
+def test_disco_roll_hovers_a_free_champion(ctrl):
+    ctrl.prefs.update({"disco": {"enabled": True}})
+    asyncio.run(ctrl.on_session(pick_phase()))
+    ctrl.lcu.calls.clear()
+    r = asyncio.run(ctrl.disco_roll())
+    assert r["ok"] and r["championId"] in (103, 80)  # ni Thresh (allié) ni Syndra (ennemie)
+    assert r["championId"] in r["reel"] and not {412, 134} & set(r["reel"])
+    assert ("PATCH", "/lol-champ-select/v1/session/actions/21", {"championId": r["championId"]}) in ctrl.lcu.calls
+    assert ctrl.state["current"]["championId"] == r["championId"]  # son build s'affiche pendant la roulette
+
+
+def test_disco_roll_refused_outside_my_pick(ctrl):
+    ctrl.prefs.update({"disco": {"enabled": True}})
+    asyncio.run(ctrl.on_session(ban_phase()))
+    assert asyncio.run(ctrl.disco_roll())["error"] == "Ce n'est pas ton tour de choisir"
+
+
+def test_disco_lock_locks_and_applies_chaos_spells(ctrl):
+    ctrl.prefs.update({"disco": {"enabled": True}})
+
+    async def scenario():
+        await ctrl.on_session(pick_phase())
+        r = await ctrl.disco_roll()
+        await ctrl._live_refresh()
+        ctrl.lcu.calls.clear()
+        return r, await ctrl.disco_lock(r["championId"], 0, [6, 21])
+
+    r, locked = asyncio.run(scenario())
+    assert locked["ok"]
+    assert ctrl.lcu.calls[0] == ("PATCH", "/lol-champ-select/v1/session/actions/21", {"championId": r["championId"], "completed": True})
+    spells = next(b for m, p, b in ctrl.lcu.calls if p == "/lol-champ-select/v1/session/my-selection")
+    assert sorted(spells.values()) == [6, 21]  # « Chaos total » : Fantôme + Barrière, sans Flash
+    assert ctrl.state["applied"]["variant"] == 0
+
+
+def test_disco_settings_are_validated(ctrl):
+    ctrl.prefs.update({"disco": {"enabled": 1, "lights": "laser", "spells": "chaos"}})
+    d = ctrl.prefs.data["disco"]
+    assert d["enabled"] is True and d["lights"] == "disco" and d["spells"] == "chaos"
+
+
+def test_disco_music_is_the_players_file(ctrl):
+    assert ctrl._settings()["disco"]["music"] == ""  # boucle intégrée
+    (ctrl.cfg.cache_dir / "disco-music.mp3").write_bytes(b"ID3")
+    (ctrl.cfg.cache_dir / "disco-music.txt").write_text("pas de la musique")
+    assert ctrl._settings()["disco"]["music"] == "disco-music.mp3"

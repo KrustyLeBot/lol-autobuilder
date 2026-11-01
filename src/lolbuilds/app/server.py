@@ -15,6 +15,7 @@ import dataclasses
 import json
 import logging
 import os
+import random
 import sys
 import tempfile
 import time
@@ -49,6 +50,13 @@ THEMES = ("hextech", "noxus", "piltover", "ionia")
 SOUNDS = ("none", "cloche", "hextech", "gong", "bip")
 # Événements du champ select qui peuvent jouer un son (réglages > Alertes).
 SOUND_EVENTS = {"start": "cloche", "banPhase": "none", "pickPhase": "none", "myBan": "gong", "myPick": "hextech"}
+# Disco pick : pendant mon tour de pick, une roulette en musique choisit au hasard mon champion, son build et mes sorts.
+DISCO_DEFAULTS = {"enabled": False, "pool": "lane", "build": "random", "spells": "build", "lights": "disco"}
+DISCO_CHOICES = {"pool": ("lane", "any"), "build": ("top", "random"), "spells": ("build", "chaos"),
+                 "lights": ("soft", "disco", "strobe")}
+# Sorts de la faille tirés en « Chaos total » (Purge, Fatigue, Flash, Fantôme, Soins, Châtiment, TP, Embrasement, Barrière).
+RIFT_SPELLS = (1, 3, 4, 6, 7, 11, 12, 14, 21)
+MUSIC_TYPES = {".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".aac": "audio/aac", ".flac": "audio/flac"}
 
 
 class Prefs:
@@ -59,10 +67,12 @@ class Prefs:
         self.data: dict[str, Any] = {
             "autoApply": True, "turnAlert": True, "alertFocus": True, "applySpells": True, "volume": 0.6,
             "sounds": dict(SOUND_EVENTS), "theme": "hextech", "flashKey": flash_key, "preferred": {},
+            "disco": dict(DISCO_DEFAULTS),
         }
         try:
             saved = json.loads(path.read_text(encoding="utf-8"))
-            self.data.update({k: v for k, v in saved.items() if k != "sounds"})
+            self.data.update({k: v for k, v in saved.items() if k not in ("sounds", "disco")})
+            self._update_disco(saved.get("disco") or {})
             self.data["sounds"].update({k: v for k, v in (saved.get("sounds") or {}).items()
                                         if k in SOUND_EVENTS and v in SOUNDS})
         except (OSError, ValueError, AttributeError):
@@ -82,6 +92,16 @@ class Prefs:
             self.data["theme"] = body["theme"]
         if body.get("flashKey") in ("D", "F", ""):
             self.data["flashKey"] = body["flashKey"]
+        if isinstance(body.get("disco"), dict):
+            self._update_disco(body["disco"])
+
+    def _update_disco(self, body: dict[str, Any]) -> None:
+        disco = self.data["disco"]
+        if "enabled" in body:
+            disco["enabled"] = bool(body["enabled"])
+        for key, choices in DISCO_CHOICES.items():
+            if body.get(key) in choices:
+                disco[key] = body[key]
 
     def save(self) -> None:
         self.path.write_text(json.dumps(self.data, indent=2), encoding="utf-8")
@@ -119,7 +139,8 @@ class Controller:
         self.demo_builds = demo_builds  # vrai client, builds d'exemple
         self.cache = BuildCache(cfg.cache_dir)
         self.champions: ChampionCatalog = load_champion_catalog(cfg.cache_dir) or ChampionCatalog()
-        self.prefs = Prefs(cfg.cache_dir / "ui_prefs.json", cfg.champselect.flash_key)
+        # La démo garde ses propres réglages : y tester une option ne la change pas dans la vraie appli.
+        self.prefs = Prefs(cfg.cache_dir / ("demo_ui_prefs.json" if demo else "ui_prefs.json"), cfg.champselect.flash_key)
         self.lcu: Lcu | None = None
         self.sockets: set[web.WebSocketResponse] = set()
         self.build: Build | None = None  # build affiché : global + propositions contre l'adversaire
@@ -134,6 +155,7 @@ class Controller:
         self._live_dirty = asyncio.Event()
         self._live_roles: dict[str, list[str]] = {}
         self._preview: int | None = None  # champion proposé cliqué avant le pick (aperçu)
+        self._disco: int | None = None  # champion tiré par le Disco pick (affiché pendant mon tour)
         self._pool: tuple[set[int] | None, dict[int, int]] | None = None  # (possédés, maîtrises) du joueur
         self._counters: tuple[tuple[str, str], list[dict[str, Any]]] | None = None
         self._team_task: asyncio.Task[None] | None = None
@@ -162,8 +184,15 @@ class Controller:
     # ------------------------------------------------------------------ état
 
     def _settings(self) -> dict[str, Any]:
-        keys = ("autoApply", "turnAlert", "alertFocus", "applySpells", "volume", "sounds", "theme", "flashKey")
-        return {k: self.prefs.data[k] for k in keys}
+        keys = ("autoApply", "turnAlert", "alertFocus", "applySpells", "volume", "sounds", "theme", "flashKey", "disco")
+        settings = {k: self.prefs.data[k] for k in keys}
+        music = self.disco_music()
+        settings["disco"] = {**settings["disco"], "music": music.name if music else ""}
+        return settings
+
+    def disco_music(self) -> Path | None:
+        """Musique du Disco pick posée par le joueur dans son dossier lolbuilds (sinon : boucle synthétisée par la page)."""
+        return next(iter(sorted(p for p in self.cfg.cache_dir.glob("disco-music.*") if p.suffix.lower() in MUSIC_TYPES)), None)
 
     def _last_prefetch(self) -> str | None:
         dates = [b.fetched_at for b in self.cache.all_builds()]
@@ -253,7 +282,7 @@ class Controller:
             self._applied_for = None
             self._matchup, self._opponent_override, self._manual = None, None, False
             self._atypical = None
-            self._preview, self._pool = None, None
+            self._preview, self._pool, self._disco = None, None, None
             self.state["counterPicks"] = None
             self.state["banSuggestions"] = None
             self.state["banPick"] = None
@@ -265,7 +294,8 @@ class Controller:
         champion_id = (me or {}).get("championId") or 0
         if champion_id:
             self._preview = None
-        shown_id = champion_id or (me or {}).get("intent") or self._preview or 0
+            self._disco = None
+        shown_id = champion_id or self._disco or (me or {}).get("intent") or self._preview or 0
         position = (me or {}).get("position", "")
         current = self.state["current"]
         if shown_id and (not current or current["championId"] != shown_id or current.get("assigned") != position):
@@ -392,7 +422,8 @@ class Controller:
 
     # ------------------------------------------------------------------ actions
 
-    async def apply(self, variant: int, auto: bool = False, spells_option: int | None = None) -> dict[str, Any]:
+    async def apply(self, variant: int, auto: bool = False, spells_option: int | None = None,
+                    spells: list[int] | None = None, remember: bool = True) -> dict[str, Any]:
         if not self.build:
             return {"ok": False, "error": "Aucun build chargé"}
         if not self.lcu or not self.state["champSelect"]:
@@ -401,6 +432,8 @@ class Controller:
         build = self.build.variant(variant)
         if spells_option is not None and self.build.spell_options:
             build = dataclasses.replace(build, spells=list(self.build.spell_options[spells_option]["spells"]))
+        if spells:
+            build = dataclasses.replace(build, spells=list(spells))
         self.state["busy"] = True
         self.state["selection"] = {"variant": variant, "spells": spells_option}
         await self.broadcast()
@@ -413,7 +446,7 @@ class Controller:
         if not auto:
             self._manual = True
             extra = len(self._matchup_variants())
-            if variant >= extra:  # préférence mémorisée seulement parmi les builds globaux
+            if remember and variant >= extra:  # préférence mémorisée seulement parmi les builds globaux
                 self.prefs.data["preferred"][f"{self.build.champion}_{self.build.role}"] = variant - extra
                 self.prefs.save()
         ok = all(steps.values())
@@ -466,6 +499,103 @@ class Controller:
                 return refuse(f"Le client a refusé le ban ({status})")
         self.state["banPick"] = {"championId": champion_id, "locked": True, "action": turn["id"]}
         await self.toast("ok", f"{name} banni")
+        return {"ok": True}
+
+    # ------------------------------------------------------------------ Disco pick
+
+    def _pick_turn(self) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
+        """(session résumée, mon action de pick en cours, moi) si c'est à moi de choisir."""
+        cs = self.state["champSelect"] or {}
+        turn = cs.get("turn")
+        me = next((a for a in cs.get("allies", []) if a["isMe"]), None)
+        if not self.lcu or not turn or turn.get("type") != "pick" or turn.get("id") is None or not me:
+            return None
+        return cs, turn, me
+
+    def _unavailable(self, cs: dict[str, Any]) -> set[int]:
+        taken = {a["championId"] or a["intent"] for a in cs.get("allies", []) if not a["isMe"]}
+        taken |= {e["championId"] for e in cs.get("enemies", [])} | {b["championId"] for b in cs.get("bans", [])}
+        taken.discard(0)
+        return taken
+
+    def _lane_champions(self, role: str) -> set[str]:
+        """Champions joués dans ce rôle d'après OP.GG (sinon d'après les builds en cache)."""
+        if self.live:
+            try:
+                rates = self.live.roles()
+            except Exception as exc:
+                log.warning("Disco pick : rôles OP.GG indisponibles (%s)", exc)
+                rates = {}
+            if rates:
+                return {c for c, r in rates.items()
+                        if r.get(role, 0) >= self.cfg.opgg.min_role_rate or (r and max(r, key=r.get) == role)}
+        return {b.champion for b in self.cache.all_builds() if b.role == role}
+
+    async def disco_roll(self) -> dict[str, Any]:
+        """Tire un champion au hasard (possédé, libre, de ma lane), le survole dans le client et charge son build."""
+        if not self.prefs.data["disco"]["enabled"]:
+            return {"ok": False, "error": "Le Disco pick est désactivé (Réglages)"}
+        turn = self._pick_turn()
+        if not turn:
+            return {"ok": False, "error": "Ce n'est pas ton tour de choisir"}
+        cs, action, me = turn
+        owned, _ = await self._load_pool()
+        taken = self._unavailable(cs)
+        candidates = [k for k in self.champions.by_key if k not in taken and (owned is None or k in owned)]
+        role = me["position"]
+        if self.prefs.data["disco"]["pool"] == "lane" and role in ROLES:
+            lane = await asyncio.to_thread(self._lane_champions, role)
+            in_lane = [k for k in candidates if self.champions.by_key[k] in lane]
+            if len(in_lane) >= 3:  # sinon (rôles inconnus) : n'importe quel champion possédé
+                candidates = in_lane
+        if not candidates:
+            return {"ok": False, "error": "Aucun champion disponible pour le Disco pick"}
+        champion_id = random.choice(candidates)
+        reel = random.sample(candidates, min(len(candidates), 24))
+        if champion_id not in reel:
+            reel[-1] = champion_id
+        name = self.champions.by_key.get(champion_id, str(champion_id))
+        path = f"/lol-champ-select/v1/session/actions/{action['id']}"
+        status, data = await self.lcu.request("PATCH", path, {"championId": champion_id})  # survol seulement
+        log.info("Disco pick : %s tiré parmi %d (%s) ; survol -> %s %s", name, len(candidates), role or "tous rôles", status, data or "")
+        self._disco = champion_id
+        self.load_build(champion_id, role)
+        await self.broadcast()
+        if self.live:
+            self._live_dirty.set()
+        return {"ok": True, "championId": champion_id, "reel": reel, "count": len(candidates), "role": role}
+
+    async def disco_lock(self, champion_id: int, variant: int, spells: list[int] | None) -> dict[str, Any]:
+        """Verrouille le champion tiré puis envoie son build (et les sorts tirés au sort, en « Chaos total »)."""
+        turn = self._pick_turn()
+        name = self.champions.by_key.get(champion_id, str(champion_id))
+        if not turn:
+            return {"ok": False, "error": "Ce n'est plus ton tour de choisir"}
+        cs, action, _ = turn
+        if champion_id != self._disco or champion_id in self._unavailable(cs):
+            return {"ok": False, "error": f"{name} n'est plus disponible"}
+        if spells is not None and (len(spells) != 2 or len(set(spells)) != 2 or not set(spells) <= set(RIFT_SPELLS)):
+            spells = None
+        path = f"/lol-champ-select/v1/session/actions/{action['id']}"
+        status, data = await self.lcu.request("PATCH", path, {"championId": champion_id, "completed": True})
+        log.info("Disco pick : verrouillage de %s -> %s %s", name, status, data or "")
+        if status not in (200, 204):
+            status, data = await self.lcu.request("PATCH", path, {"championId": champion_id})
+            if status in (200, 204):
+                status, data = await self.lcu.request("POST", path + "/complete")
+            log.info("Disco pick : sélection puis verrouillage de %s -> %s %s", name, status, data or "")
+            if status not in (200, 204):
+                return {"ok": False, "error": f"Le client a refusé de verrouiller {name} ({status})"}
+        self._manual = True  # le build tiré ne doit pas être remplacé par l'application automatique
+        for _ in range(40):  # le build OP.GG peut encore être en route
+            cur = self.state["current"]
+            if cur and cur["championId"] == champion_id and self.build and not cur.get("fetching"):
+                break
+            await asyncio.sleep(0.2)
+        cur = self.state["current"]
+        if cur and cur["championId"] == champion_id and self.build:
+            await self.apply(variant, spells=spells, remember=False)
+        await self.toast("ok", f"Disco pick : {name} verrouillé")
         return {"ok": True}
 
     # ------------------------------------------------------------------ mon équipe pendant la partie
@@ -1016,6 +1146,31 @@ def make_app(ctrl: Controller) -> web.Application:
         if not result["ok"]:
             await ctrl.toast("warn", result["error"])
         return web.json_response(result)
+
+    @routes.post("/api/disco/roll")
+    async def disco_roll(_req: web.Request) -> web.Response:
+        result = await ctrl.disco_roll()
+        if not result["ok"]:
+            await ctrl.toast("warn", result["error"])
+        return web.json_response(result)
+
+    @routes.post("/api/disco/lock")
+    async def disco_lock(req: web.Request) -> web.Response:
+        body = await req.json()
+        spells = body.get("spells")
+        result = await ctrl.disco_lock(int(body.get("championId") or 0), int(body.get("variant") or 0),
+                                       [int(s) for s in spells] if isinstance(spells, list) else None)
+        if not result["ok"]:
+            await ctrl.toast("warn", result["error"])
+        return web.json_response(result)
+
+    @routes.get("/api/disco/music")
+    async def disco_music(_req: web.Request) -> web.StreamResponse:
+        found = ctrl.disco_music()
+        if not found:
+            raise web.HTTPNotFound()
+        return web.FileResponse(found, headers={"Content-Type": MUSIC_TYPES.get(found.suffix.lower(), "audio/mpeg"),
+                                                "Cache-Control": "no-cache"})
 
     @routes.post("/api/prefetch")
     async def prefetch(_req: web.Request) -> web.Response:

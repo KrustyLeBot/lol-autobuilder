@@ -81,66 +81,103 @@
       <div class="lib-detail" id="lib-detail" hidden></div>
     </section>
     <section class="view" id="view-settings" hidden>
-      <div class="lib-head">
-        <div>
-          <h1 class="lib-title">Réglages</h1>
-          <p class="lib-sub">Enregistrés tout de suite. L'elo des stats et la récupération OP.GG se règlent dans <code>config.toml</code>.</p>
-        </div>
-      </div>
-      <div class="settings">
-        <section class="panel set-block">
-          <h2 class="section-title">Alertes</h2>
-          <label class="set-row switch" for="set-alert">
-            <span class="set-txt"><b>Alertes activées</b><small>Même interrupteur que « Alerte » dans la barre du haut</small></span>
-            <input type="checkbox" id="set-alert"><span class="switch-track"><span class="switch-thumb"></span></span>
-          </label>
-          <label class="set-row switch" for="set-focus">
-            <span class="set-txt"><b>Fenêtre au premier plan</b><small>Quand c'est à toi de bannir ou de choisir</small></span>
-            <input type="checkbox" id="set-focus"><span class="switch-track"><span class="switch-thumb"></span></span>
-          </label>
-          <label class="set-row" for="set-volume">
-            <span class="set-txt"><b>Volume</b><small id="set-volume-val"></small></span>
-            <input type="range" id="set-volume" min="0" max="1" step="0.05">
-          </label>
-          <div class="set-sounds" id="set-sounds"></div>
-        </section>
-        <section class="panel set-block">
-          <h2 class="section-title">Thème</h2>
-          <div class="themes" id="set-themes"></div>
-        </section>
-        <section class="panel set-block">
-          <h2 class="section-title">Champ select</h2>
-          <label class="set-row switch" for="set-auto">
-            <span class="set-txt"><b>Application automatique</b><small>Le build préféré est envoyé au client dès que ton champion est verrouillé</small></span>
-            <input type="checkbox" id="set-auto"><span class="switch-track"><span class="switch-thumb"></span></span>
-          </label>
-          <label class="set-row switch" for="set-spells">
-            <span class="set-txt"><b>Appliquer les sorts d'invocateur</b><small>Désactivé : lolbuilds ne touche jamais à tes sorts (tu peux toujours en choisir une paire à la main dans les propositions)</small></span>
-            <input type="checkbox" id="set-spells"><span class="switch-track"><span class="switch-thumb"></span></span>
-          </label>
-          <div class="set-row">
-            <span class="set-txt"><b>Touche de Flash</b><small>Flash est placé sur cette touche quand le build contient Flash</small></span>
-            <div class="seg" role="group" aria-label="Touche de Flash">
-              <button type="button" data-setflash="D">D</button><button type="button" data-setflash="F">F</button><button type="button" data-setflash="">Libre</button>
+      <div class="settings-page">
+        <nav class="set-nav" aria-label="Sections des réglages">
+          <h1 class="set-title">Réglages</h1>
+          <p class="set-nav-sub">Enregistrés dès que tu les changes.</p>
+          <button type="button" data-setjump="set-champselect">Champ select</button>
+          <button type="button" data-setjump="set-alerts">Alertes et sons</button>
+          <button type="button" data-setjump="set-disco">Disco pick</button>
+          <button type="button" data-setjump="set-theme">Thème</button>
+          <button type="button" data-setjump="set-builds">Builds en cache</button>
+          <button type="button" data-setjump="set-update">Mise à jour</button>
+        </nav>
+        <div class="set-content">
+          <section class="set-card" id="set-champselect">
+            <header class="set-card-head"><h2>Champ select</h2><p>Ce que lolbuilds envoie au client quand tu choisis ton champion.</p></header>
+            <label class="set-row switch" for="set-auto">
+              <span class="set-txt"><b>Application automatique</b><small>Le build préféré est envoyé au client dès que ton champion est verrouillé</small></span>
+              <input type="checkbox" id="set-auto"><span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+            <label class="set-row switch" for="set-spells">
+              <span class="set-txt"><b>Appliquer les sorts d'invocateur</b><small>Désactivé : lolbuilds ne touche jamais à tes sorts (tu peux toujours en choisir une paire à la main)</small></span>
+              <input type="checkbox" id="set-spells"><span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+            <div class="set-row">
+              <span class="set-txt"><b>Touche de Flash</b><small>Flash est placé sur cette touche quand le build contient Flash</small></span>
+              <div class="seg seg-wide" role="group" aria-label="Touche de Flash">
+                <button type="button" data-setflash="D">D</button><button type="button" data-setflash="F">F</button><button type="button" data-setflash="">Libre</button>
+              </div>
             </div>
-          </div>
-        </section>
-        <section class="panel set-block" id="set-builds">
-          <h2 class="section-title">Builds en cache</h2>
-          <div class="set-row">
-            <span class="set-txt"><b id="bld-title">Builds en cache</b><small id="bld-sub"></small></span>
-            <span class="upd-actions" id="bld-actions"></span>
-          </div>
-          <div class="set-row"><span class="set-txt"><small>Les builds se récupèrent tout seuls : quand tu choisis un champion, son build du jour est demandé à OP.GG puis gardé jusqu'au lendemain. « Tout télécharger » prépare tous les champions d'un coup (quelques minutes), pour ne rien attendre en champ select.</small></span></div>
-        </section>
-        <section class="panel set-block" id="set-update">
-          <h2 class="section-title">Mise à jour</h2>
-          <div class="set-row">
-            <span class="set-txt"><b id="upd-title">Version installée</b><small id="upd-sub"></small></span>
-            <span class="upd-actions" id="upd-actions"></span>
-          </div>
-          <div class="upd-notes" id="upd-notes" hidden></div>
-        </section>
+          </section>
+
+          <section class="set-card" id="set-alerts">
+            <header class="set-card-head"><h2>Alertes et sons</h2><p>Pour ne pas rater ton tour de bannir ou de choisir.</p></header>
+            <label class="set-row switch" for="set-alert">
+              <span class="set-txt"><b>Alertes activées</b><small>Même interrupteur que « Alerte » dans la barre du haut</small></span>
+              <input type="checkbox" id="set-alert"><span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+            <label class="set-row switch" for="set-focus">
+              <span class="set-txt"><b>Fenêtre au premier plan</b><small>Quand c'est à toi de bannir ou de choisir</small></span>
+              <input type="checkbox" id="set-focus"><span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+            <label class="set-row" for="set-volume">
+              <span class="set-txt"><b>Volume</b><small id="set-volume-val"></small></span>
+              <input type="range" id="set-volume" min="0" max="1" step="0.05">
+            </label>
+            <h3 class="set-sub">Son de chaque événement</h3>
+            <div class="set-sounds" id="set-sounds"></div>
+          </section>
+
+          <section class="set-card disco-set" id="set-disco">
+            <header class="set-card-head"><h2>Disco pick</h2><p>Pendant ton tour de pick, un bouton lance musique et lumières : le hasard choisit ton champion, son build et tes sorts, puis le verrouille après 3 secondes : pas de marche arrière, on assume. L'écran disco reste jusqu'au lancement de la partie.</p></header>
+            <label class="set-row switch" for="set-disco-on">
+              <span class="set-txt"><b>Activer le Disco pick</b><small>Le bouton apparaît sous le portrait, seulement pendant ton tour de pick</small></span>
+              <input type="checkbox" id="set-disco-on"><span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+            <div class="set-row disco-opt">
+              <span class="set-txt"><b>Champions tirés au sort</b><small>Seulement ceux que tu possèdes, ni bannis ni pris</small></span>
+              <div class="seg seg-wide" role="group" aria-label="Champions tirés au sort"><button type="button" data-disco="pool:lane">Ma lane</button><button type="button" data-disco="pool:any">Tous</button></div>
+            </div>
+            <div class="set-row disco-opt">
+              <span class="set-txt"><b>Build</b><small>Parmi les propositions OP.GG du champion tiré</small></span>
+              <div class="seg seg-wide" role="group" aria-label="Build"><button type="button" data-disco="build:top">Le plus joué</button><button type="button" data-disco="build:random">Au hasard</button></div>
+            </div>
+            <div class="set-row disco-opt">
+              <span class="set-txt"><b>Sorts d'invocateur</b><small>Chaos total : deux sorts au hasard, même sans Flash</small></span>
+              <div class="seg seg-wide" role="group" aria-label="Sorts d'invocateur"><button type="button" data-disco="spells:build">Ceux du build</button><button type="button" data-disco="spells:chaos">Chaos total</button></div>
+            </div>
+            <div class="set-row disco-opt">
+              <span class="set-txt"><b>Lumières</b><small>Strobo : flashs, déconseillé si tu es sensible à la lumière (coupé si Windows réduit les animations)</small></span>
+              <div class="seg seg-wide" role="group" aria-label="Lumières"><button type="button" data-disco="lights:soft">Douces</button><button type="button" data-disco="lights:disco">Disco</button><button type="button" data-disco="lights:strobe">Strobo</button></div>
+            </div>
+          </section>
+
+          <section class="set-card" id="set-theme">
+            <header class="set-card-head"><h2>Thème</h2><p>L'habillage de la fenêtre, aux couleurs d'une région de Runeterra.</p></header>
+            <div class="themes" id="set-themes"></div>
+          </section>
+
+          <section class="set-card" id="set-builds">
+            <header class="set-card-head"><h2>Builds en cache</h2><p>Quand tu choisis un champion, son build du jour est demandé à OP.GG puis gardé jusqu'au lendemain.</p></header>
+            <div class="set-row">
+              <span class="set-txt"><b id="bld-title">Builds en cache</b><small id="bld-sub"></small></span>
+              <span class="upd-actions" id="bld-actions"></span>
+            </div>
+            <p class="set-note">« Tout télécharger » prépare tous les champions d'un coup (quelques minutes), pour ne rien attendre en champ select.</p>
+          </section>
+
+          <section class="set-card" id="set-update">
+            <header class="set-card-head"><h2>Mise à jour</h2><p>Les nouvelles versions publiées sur GitHub.</p></header>
+            <div class="set-row">
+              <span class="set-txt"><b id="upd-title">Version installée</b><small id="upd-sub"></small></span>
+              <span class="upd-actions" id="upd-actions"></span>
+            </div>
+            <div class="upd-notes" id="upd-notes" hidden></div>
+          </section>
+
+          <p class="set-foot">L'elo des statistiques et la récupération OP.GG se règlent dans <code>config.toml</code>.</p>
+        </div>
       </div>
     </section>
   </main>
@@ -148,5 +185,6 @@
 <div class="tooltip" id="tooltip" hidden></div>
 <div class="toasts" id="toasts"></div>
 <script src="/ui/app.js"></script>
+<script src="/ui/disco.js"></script>
 </body>
 </html>

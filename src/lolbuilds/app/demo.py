@@ -86,7 +86,7 @@ def make_demo_builds(static: StaticData, runes: list[dict[str, Any]], cache: Bui
 
 # Cycle de la démo (secondes) : prépick (rien puis Ahri déclarée), mon ban, tour des autres, mon pick (Ahri survolée),
 # Ahri verrouillée, puis la partie (joueurs fictifs).
-DEMO_STEPS = [("empty", 5), ("planning", 6), ("ban", 12), ("wait", 6), ("pick", 10), ("locked", 15), ("ingame", 20)]
+DEMO_STEPS = [("empty", 5), ("planning", 6), ("ban", 12), ("wait", 6), ("pick", 30), ("locked", 15), ("ingame", 20)]
 # Bans suggérés affichés pendant le tour de ban de la démo (pas d'appel OP.GG en démo).
 DEMO_BANS = [  # (championId, winrate du champion contre Ahri, parties)
     (238, 0.531, 6120), (7, 0.528, 4380), (55, 0.524, 3950), (105, 0.519, 4210), (134, 0.512, 7990), (517, 0.508, 2870),
