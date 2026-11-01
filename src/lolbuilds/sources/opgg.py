@@ -25,7 +25,7 @@ from typing import Any
 
 import httpx
 
-from .. import AUTO_PREFIX, ROLE_LABELS
+from .. import ARAM, AUTO_PREFIX, ROLE_LABELS
 from ..aggregation import CONSUMABLES
 from ..config import OpggSettings
 from ..ddragon import ChampionCatalog, ItemCatalog, StaticData
@@ -270,9 +270,15 @@ def _variant(runes: dict[str, Any], spells: dict[str, Any], *, starter: dict[str
     }
 
 
+ARAM_MAP = 12  # Abîme hurlant : sans lui, l'item set n'apparaît pas dans la boutique d'une partie d'ARAM
+SUMMONERS_RIFT_MAP = 11
+
+
 def build_from_analysis(analysis: Any, *, champion: str, champion_id: int, role: str, patch: str,
                         source: str = "opgg") -> Build:
-    """Convertit la réponse de `lol_get_champion_analysis` en `Build` (une proposition)."""
+    """Convertit la réponse de `lol_get_champion_analysis` en `Build` (une proposition).
+
+    `role` peut être `ARAM` : mêmes données, issues des stats d'ARAM, item set pour l'Abîme hurlant."""
     data = (analysis or {}).get("data") or {}
     runes = data.get("runes")
     spells = data.get("summoner_spells")
@@ -282,7 +288,8 @@ def build_from_analysis(analysis: Any, *, champion: str, champion_id: int, role:
                    for option in data.get(key) or [] for i in option.get("ids", [])]
     variant = _variant(runes, spells, starter=data.get("starter_items"), core=data.get("core_items"),
                        boots=data.get("boots"), situational=situational,
-                       skills=(data.get("skills") or {}).get("order", []), tags=["Recommandé OP.GG"])
+                       skills=(data.get("skills") or {}).get("order", []),
+                       tags=["Build ARAM"] if role == ARAM else ["Recommandé OP.GG"])
     # Stats du champion dans CE rôle ; `average_stats` couvre tous ses rôles confondus.
     summary_raw = data.get("summary") or {}
     summary = next((p.get("stats") or {} for p in summary_raw.get("positions") or []
@@ -302,7 +309,7 @@ def build_from_analysis(analysis: Any, *, champion: str, champion_id: int, role:
         itemSet={
             "title": f"{AUTO_PREFIX} {label} {patch}",
             "associatedChampions": [champion_id],
-            "associatedMaps": [11],
+            "associatedMaps": [ARAM_MAP if role == ARAM else SUMMONERS_RIFT_MAP],
             "blocks": variant["blocks"],
         },
         sample_size=int(summary.get("play") or runes.get("play") or 0),
@@ -446,7 +453,13 @@ class OpggSource(BuildSource):
         rates = self.roles().get(champion)
         return max(rates, key=rates.get) if rates else None
 
+    def aram_targets(self, champions: Iterable[str]) -> list[Target]:
+        """Un build ARAM par champion (pas de lane en ARAM), si l'option `aram` est active."""
+        return [Target(champ, ARAM) for champ in sorted(set(champions))] if self.settings.aram else []
+
     def fetch_build(self, champion: str, role: str) -> Build:
+        if role == ARAM:
+            return self._fetch_aram(champion)
         if role not in TO_OPGG:
             raise BuildSourceError(f"rôle inconnu : {role}")
         try:
@@ -464,6 +477,22 @@ class OpggSource(BuildSource):
             args["tier"] = self.settings.tier
         analysis = self.client.call("lol_get_champion_analysis", args)
         return build_from_analysis(analysis, champion=champion, champion_id=champion_id, role=role,
+                                   patch=self.static.patch)
+
+    def _fetch_aram(self, champion: str) -> Build:
+        """Build issu des stats d'ARAM d'OP.GG (une seule requête ; la lane demandée est ignorée par OP.GG)."""
+        try:
+            champion_id = self.static.champions.key_of(champion)
+        except KeyError as exc:
+            raise BuildSourceError(f"champion inconnu : {champion}") from exc
+        analysis = self.client.call("lol_get_champion_analysis", {
+            "champion": opgg_name(self.static.champions.names.get(champion, champion)),
+            "position": "mid",  # obligatoire pour l'outil, sans effet en ARAM
+            "game_mode": "aram",
+            "lang": "en_US",
+            "desired_output_fields": ANALYSIS_FIELDS,
+        })
+        return build_from_analysis(analysis, champion=champion, champion_id=champion_id, role=ARAM,
                                    patch=self.static.patch)
 
     def fetch_matchup(self, champion: str, role: str, opponent: str) -> list[dict[str, Any]]:

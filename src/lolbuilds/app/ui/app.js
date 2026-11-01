@@ -2,6 +2,8 @@
 "use strict";
 
 const $ = (sel, root = document) => root.querySelector(sel);
+// API de la fenêtre de bureau (pywebview) ; absente dans le navigateur. Au niveau du module : l'alerte de tour s'en sert aussi.
+const api = () => window.pywebview?.api;
 let S = null;            // données statiques (noms fr, descriptions) : /api/static
 let state = null;        // état courant poussé par le serveur
 let view = "live";
@@ -14,7 +16,7 @@ let timerEnds = null;  // hors du HTML : sinon chaque event changerait le rendu
 let lastTurn = null;  // id de l'action LCU pour laquelle on a déjà alerté
 let turnTotal = null;  // durée de l'action en cours (ms), si le client ne la donne pas
 
-const ROLE_LABEL = { top: "Top", jungle: "Jungle", middle: "Mid", bottom: "ADC", utility: "Support" };
+const ROLE_LABEL = { top: "Top", jungle: "Jungle", middle: "Mid", bottom: "ADC", utility: "Support", aram: "ARAM" };
 const ROLE_ORDER = ["top", "jungle", "middle", "bottom", "utility"];
 const ROLE_SVG = {
   top: '<path d="M2 2h9.5L8.5 5H5v3.5l-3 3z" fill="currentColor"/><path d="M9 9h5v5H9z" fill="currentColor" opacity=".35"/>',
@@ -111,7 +113,9 @@ function checkTurn() {
   wasInChampSelect = Boolean(cs);
   const set = state.settings;
   if (first || !events.length || !set?.turnAlert) return;
-  if (turn && events.includes(turn.type === "ban" ? "myBan" : "myPick") && set.alertFocus) api()?.focus();
+  if (turn && events.includes(turn.type === "ban" ? "myBan" : "myPick") && set.alertFocus) {
+    try { api()?.focus(); } catch { /* sans fenêtre à ramener : le son joue quand même */ }
+  }
   // Un seul son à la fois : mon tour d'abord, puis la phase, puis le début du champ select.
   const sound = ["myBan", "myPick", "banPhase", "pickPhase", "start"].filter((e) => events.includes(e))
     .map((e) => set.sounds?.[e]).find((s) => s && s !== "none");
@@ -189,6 +193,7 @@ function renderSettings() {
   $("#set-alert").checked = set.turnAlert;
   $("#set-focus").checked = set.alertFocus;
   $("#set-auto").checked = set.autoApply;
+  $("#set-spells").checked = set.applySpells;
   if (!keep($("#set-volume"))) $("#set-volume").value = set.volume;
   $("#set-volume-val").textContent = `${Math.round(set.volume * 100)} %`;
   document.querySelectorAll("[data-setflash]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setflash === set.flashKey)));
@@ -337,12 +342,12 @@ function emptyHtml(kind) {
 
 function libraryCountGuess() { return library.length || 0; }
 
-function heroHtml(cur, cs) {
+function heroHtml(cur, cs, library = false) {
   const c = champ(cur.championId);
   const b = cur.build;
-  timerEnds = cs?.timer?.endsAt || null;
-  const timer = timerEnds ? `<span class="timer num js-timer"></span>` : "";
-  const phase = cs ? (cur.locked ? "Champion verrouillé" : cur.preview ? "Aperçu · bon pick" : "Champion survolé") : "Aperçu";
+  if (!library) timerEnds = cs?.timer?.endsAt || null;  // la bibliothèque ne touche pas au minuteur du champ select
+  const timer = !library && timerEnds ? `<span class="timer num js-timer"></span>` : "";
+  const phase = library ? "Bibliothèque" : cs ? (cur.locked ? "Champion verrouillé" : cur.preview ? "Aperçu · bon pick" : "Champion survolé") : "Aperçu";
   const roles = (cur.roles.length ? cur.roles : [cur.role]).filter(Boolean);
   const tabs = roles.map((r) => `<button type="button" class="role-tab" data-role="${r}" aria-pressed="${r === cur.role}">
       ${roleIcon(r)}${ROLE_LABEL[r] || r}${r === cur.assigned ? '<span class="assigned" title="Rôle assigné"></span>' : ""}</button>`).join("");
@@ -502,10 +507,11 @@ function variantsOf(b) {
             games: b.sample_size, winrate: b.winrate, pick_rate: 1, tags: [], details: b.details }];
 }
 
-function buildHtml(cur, b, cs, enter) {
+// `ctx` : build ouvert depuis la bibliothèque ({ variant }), indépendant du champ select en cours (rien n'est appliqué).
+function buildHtml(cur, b, cs, enter, ctx = null) {
   const variants = variantsOf(b);
-  const sel = Math.min(state.selection.variant || 0, variants.length - 1);
-  const applied = state.applied;
+  const sel = Math.min(ctx ? ctx.variant : state.selection.variant || 0, variants.length - 1);
+  const applied = ctx ? null : state.applied;
   const flashKey = state.settings.flashKey;
 
   const cards = variants.map((v, i) => {
@@ -513,7 +519,7 @@ function buildHtml(cur, b, cs, enter) {
     const core = (v.blocks.find((x) => x.key === "core") || v.blocks.find((x) => /^Core/.test(x.type)))?.items || [];
     const boots = (v.blocks.find((x) => x.key === "boots") || v.blocks.find((x) => /^Bottes/.test(x.type)))?.items?.[0];
     const sp = orient(v.spells, flashKey);
-    const tags = [...(v.tags || []).map((t) => `<span class="tag${t === "Le plus joué" ? " alt" : t.startsWith("Contre ") ? " vs" : ""}">${esc(t)}</span>`),
+    const tags = [...(v.tags || []).map((t) => `<span class="tag${t === "Le plus joué" ? " alt" : t.startsWith("Contre ") ? " vs" : t.startsWith("Atypique") ? " atypical" : ""}">${esc(t)}</span>`),
       v.details?.runes?.fallback ? '<span class="tag warn">Échantillon faible</span>' : ""].join("");
     const isApplied = applied && applied.variant === i;
     const action = !cs ? "Voir" : isApplied ? "Appliqué" : state.busy && i === sel ? "Application…" : "Appliquer";
@@ -537,14 +543,16 @@ function buildHtml(cur, b, cs, enter) {
   }).join("");
 
   const v = variants[sel];
-  const note = cs ? appliedBarHtml(applied, variants) : `<div class="preview-note">Aperçu : ce build s'appliquera pendant la sélection des champions${state.settings.autoApply ? " (automatiquement)" : ""}.</div>`;
+  const note = ctx ? `<div class="preview-note">Aperçu depuis les builds en cache : ta sélection de champion en cours n'est pas modifiée.</div>`
+    : cs ? appliedBarHtml(applied, variants)
+    : `<div class="preview-note">Aperçu : ce build s'appliquera pendant la sélection des champions${state.settings.autoApply ? " (automatiquement)" : ""}.</div>`;
   return `${note}
     <section class="section"><div class="section-head"><h2 class="section-title">Propositions de build</h2>
       <span class="section-note">Triées par winrate · touches 1 à ${variants.length} pour choisir</span></div>
       <div class="variants${enter ? " enter" : ""}">${cards}</div></section>
     <div class="detail">
       <div class="panel">${runesHtml(v)}</div>
-      <div class="panel" style="display:grid; gap:22px; align-content:start">${itemsHtml(v)}${spellsHtml(b, v, cs)}</div>
+      <div class="panel" style="display:grid; gap:22px; align-content:start">${itemsHtml(v)}${spellsHtml(b, v, cs, ctx)}</div>
     </div>`;
 }
 
@@ -556,7 +564,8 @@ function appliedBarHtml(applied, variants) {
   const step = (ok, label) => ok === undefined ? "" : `<span class="step ${ok ? "ok" : "ko"}">${ok ? "✓" : "✕"} <span>${label}</span></span>`;
   const ks = perk(variants[applied.variant]?.perks?.[0]);
   return `<div class="applied-bar">${step(applied.steps.runes, "Page de runes")}${step(applied.steps.spells, "Sorts d'invocateur")}${step(applied.steps.items, "Item set")}
-    <span class="spacer"></span><span>${applied.auto ? "Appliqué automatiquement" : "Appliqué"} · ${esc(ks?.name || "")}</span></div>`;
+    <span class="spacer"></span><span>${applied.auto ? "Appliqué automatiquement" : "Appliqué"} · ${esc(ks?.name || "")}</span></div>
+    ${Object.values(applied.problems || {}).map((t) => `<div class="applied-problem">${esc(t)}</div>`).join("")}`;
 }
 
 function runesHtml(v) {
@@ -588,11 +597,11 @@ function itemsHtml(v) {
   return `<div><h3>Items</h3><div class="blocks">${blocks}</div></div>`;
 }
 
-function spellsHtml(b, v, cs) {
+function spellsHtml(b, v, cs, ctx = null) {
   const flashKey = state.settings.flashKey;
   const opts = b.spell_options?.length ? b.spell_options : [{ spells: v.spells, games: v.games, winrate: v.winrate, pick_rate: v.pick_rate }];
   const same = (a, c) => a.length === c.length && a.every((x) => c.includes(x));
-  const active = state.selection.spells ?? opts.findIndex((o) => same(o.spells, v.spells));
+  const active = (ctx ? null : state.selection.spells) ?? opts.findIndex((o) => same(o.spells, v.spells));
   const rows = opts.map((o, i) => {
     const sp = orient(o.spells, flashKey);
     return `<button type="button" class="spell-opt${i === active ? " active" : ""}" data-spells="${i}" ${cs ? "" : "disabled"}>
@@ -611,6 +620,29 @@ async function loadLibrary() {
   } catch { library = []; }
   renderLibrary();
   render();  // le compteur « builds en cache » de l'écran d'attente en dépend
+}
+
+/* Un build de la bibliothèque s'ouvre ici, dans la bibliothèque : il ne remplace jamais le champ select. */
+let libDetail = null;  // { cur, variant }
+
+async function openLibraryBuild(championId, role) {
+  try {
+    const r = await (await fetch(`/api/peek?championId=${championId}&role=${encodeURIComponent(role || "")}`)).json();
+    libDetail = { cur: r.current, variant: 0 };
+  } catch { toast("warn", "Le serveur local ne répond pas."); return; }
+  renderLibraryDetail(true);
+}
+
+function renderLibraryDetail(enter = false) {
+  const open = Boolean(libDetail);
+  $("#lib-detail").hidden = !open;
+  $("#lib-head").hidden = open;
+  $("#lib-table").hidden = open;
+  if (!open) return;
+  const { cur } = libDetail;
+  const b = cur.build;
+  $("#lib-detail").innerHTML = `<button type="button" class="btn ghost lib-back" data-libback>← Builds en cache</button>
+    ${heroHtml(cur, null, true)}${b ? buildHtml(cur, b, null, enter, libDetail) : noBuildHtml(cur)}`;
 }
 
 function renderLibrary() {
@@ -638,18 +670,19 @@ function renderLibrary() {
 }
 
 function setView(v) {
+  const wasLibrary = view === "library";  // un second clic sur « Builds » revient à la liste
   view = v;
   $("#view-live").hidden = v !== "live";
   $("#view-library").hidden = v !== "library";
   $("#view-settings").hidden = v !== "settings";
   document.querySelectorAll(".rail-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
-  if (v === "library") loadLibrary();
+  if (v === "library") { if (wasLibrary) libDetail = null; renderLibraryDetail(); loadLibrary(); }
   else render();
 }
 
 /* ------------------------------------------------------------------ interactions */
 document.addEventListener("click", async (e) => {
-  const t = e.target.closest("[data-variant],[data-spells],[data-role],[data-goto],[data-open],[data-view],[data-librole],[data-key],[data-opponent],[data-preview],[data-ban],[data-banlock]");
+  const t = e.target.closest("[data-variant],[data-spells],[data-role],[data-goto],[data-open],[data-view],[data-librole],[data-key],[data-opponent],[data-preview],[data-ban],[data-banlock],[data-libback]");
   if (!t) return;
   if (t.dataset.ban) {
     post("/api/ban", { championId: Number(t.dataset.ban), lock: false });
@@ -660,15 +693,19 @@ document.addEventListener("click", async (e) => {
   } else if (t.dataset.opponent) {
     post("/api/opponent", { championId: Number(t.dataset.opponent) });
   } else if (t.dataset.open) {
-    await post("/api/open", { championId: Number(t.dataset.open), role: t.dataset.role });
-    lastKey = "";
-    setView("live");
+    openLibraryBuild(Number(t.dataset.open), t.dataset.role);
+  } else if (t.dataset.libback !== undefined) {
+    libDetail = null;
+    renderLibraryDetail();
   } else if (t.dataset.variant !== undefined) {
-    choose(Number(t.dataset.variant));
+    if (view === "library" && libDetail) { libDetail.variant = Number(t.dataset.variant); renderLibraryDetail(); }
+    else choose(Number(t.dataset.variant));
   } else if (t.dataset.spells !== undefined) {
     post("/api/spells", { option: Number(t.dataset.spells) });
   } else if (t.dataset.role && t.classList.contains("role-tab")) {
-    if (t.getAttribute("aria-pressed") !== "true") post("/api/open", { championId: state.current.championId, role: t.dataset.role });
+    if (t.getAttribute("aria-pressed") === "true") return;
+    if (view === "library" && libDetail) openLibraryBuild(libDetail.cur.championId, t.dataset.role);
+    else post("/api/open", { championId: state.current.championId, role: t.dataset.role });
   } else if (t.dataset.goto) {
     setView(t.dataset.goto);
   } else if (t.dataset.view) {
@@ -689,7 +726,13 @@ function choose(i) {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (e.target.matches("input") || view !== "live") return;
+  if (e.target.matches("input")) return;
+  if (view === "library" && libDetail) {
+    const n = variantsOf(libDetail.cur.build || { variants: [] }).length;
+    if (/^[1-9]$/.test(e.key) && Number(e.key) <= n) { libDetail.variant = Number(e.key) - 1; renderLibraryDetail(); }
+    return;
+  }
+  if (view !== "live") return;
   if (/^[1-9]$/.test(e.key)) choose(Number(e.key) - 1);
 });
 
@@ -698,6 +741,7 @@ $("#opt-alert").addEventListener("change", (e) => post("/api/settings", { turnAl
 $("#set-alert").addEventListener("change", (e) => post("/api/settings", { turnAlert: e.target.checked }));
 $("#set-focus").addEventListener("change", (e) => post("/api/settings", { alertFocus: e.target.checked }));
 $("#set-auto").addEventListener("change", (e) => post("/api/settings", { autoApply: e.target.checked }));
+$("#set-spells").addEventListener("change", (e) => post("/api/settings", { applySpells: e.target.checked }));
 $("#set-volume").addEventListener("input", (e) => { $("#set-volume-val").textContent = `${Math.round(e.target.value * 100)} %`; });
 $("#set-volume").addEventListener("change", (e) => {
   post("/api/settings", { volume: Number(e.target.value) });
@@ -785,7 +829,6 @@ function toast(kind, text) {
 /* ------------------------------------------------------------------ fenêtre de bureau */
 if (new URLSearchParams(location.search).has("desktop")) {
   $("#winctl").hidden = false;
-  const api = () => window.pywebview?.api;
   $("#win-min").onclick = () => api()?.minimize();
   $("#win-close").onclick = () => api()?.close();
   $("#win-pin").onclick = async () => {

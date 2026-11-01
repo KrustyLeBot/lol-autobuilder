@@ -23,6 +23,7 @@ class OpggSettings:
     request_interval: float = 0.5  # s entre deux requêtes OP.GG
     live: bool = True  # récupère le build au moment du pick s'il n'est pas déjà en cache du jour
     matchup: bool = True  # + les builds contre l'adversaire de lane détecté
+    aram: bool = True  # builds ARAM (stats OP.GG de l'ARAM) en ARAM, et en « atypique » dans les autres modes
 
     def __post_init__(self) -> None:
         if self.tier not in OPGG_TIERS:

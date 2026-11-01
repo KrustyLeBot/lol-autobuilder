@@ -61,6 +61,9 @@ class BuildCache:
         return [b for p in self.build_paths() if (b := self._load_path(p))]
 
     def builds_for_champion(self, champion: str) -> list[Build]:
-        """Tous les builds en cache d'un champion (tous rôles), plus gros échantillon d'abord."""
-        builds = [b for p in self.root.glob(f"{champion}_*.json") if (b := self._load_path(p)) and b.champion == champion]
+        """Tous les builds en cache d'un champion (toutes les lanes), plus gros échantillon d'abord.
+
+        Le build ARAM (`{Champion}_aram.json`) n'en fait pas partie : ce n'est pas une lane."""
+        builds = [b for p in self.root.glob(f"{champion}_*.json")
+                  if p.stem.rsplit("_", 1)[1] in ROLES and (b := self._load_path(p)) and b.champion == champion]
         return sorted(builds, key=lambda b: b.sample_size, reverse=True)

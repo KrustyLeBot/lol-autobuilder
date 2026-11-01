@@ -12,6 +12,8 @@ Une alternative légère à Blitz ou Porofessor, centrée sur une seule chose : 
 - **Bans suggérés** : pendant ton tour de ban, les champions les plus dangereux pour toi ou les plus forts de ta lane. Un clic sélectionne le champion dans ton ban, **Bannir** le verrouille (ça ne touche jamais à ton pick).
 - **Alerte quand c'est ton tour** : la fenêtre repasse devant et un son est joué au moment de bannir ou de choisir.
 - **Ton équipe en partie** : une fois la partie chargée, le rang, le winrate de la saison et les résultats de chaque allié sur son champion (OP.GG), avec des indications : série de victoires, main du champion, peu d'expérience dessus…
+- **ARAM** : en ARAM, lolbuilds applique un build issu des **statistiques d'ARAM** d'OP.GG (runes, sorts, items, item set pour l'Abîme hurlant), et plus celui d'une lane de la faille.
+- **Build atypique** : dans les autres modes, le build ARAM du champion est proposé en dernier, avec l'étiquette « Atypique : build ARAM » (jamais appliqué par défaut). Il est ignoré s'il ressemble déjà à une proposition.
 - **Thèmes** aux couleurs de Runeterra : Hextech, Noxus, Piltover et Ionia.
 
 Les statistiques viennent d'OP.GG (parties classées Émeraude et plus).
@@ -53,6 +55,7 @@ Tout se règle dans **Réglages** (icône d'engrenage à gauche) :
 | Application automatique | applique le meilleur build dès que ton champion est verrouillé |
 | Alertes | fenêtre au premier plan et son quand c'est ton tour de bannir ou de choisir ; un son au choix pour chaque moment |
 | Builds en cache | « Tout télécharger » prépare les builds de tous les champions d'un coup (quelques minutes) et indique la date de la dernière récupération |
+| Sorts d'invocateur | désactivé : lolbuilds applique le build et les runes mais ne touche jamais à tes sorts (tu peux toujours choisir une paire à la main) |
 | Touche de Flash | Flash sur D, sur F, ou là où le build le met |
 | Thème | Hextech, Noxus, Piltover ou Ionia |
 | Mise à jour | indique ta version et installe la nouvelle en un clic quand elle sort |
@@ -71,6 +74,9 @@ La version portable se met à jour de la même façon : le nouvel exe est télé
 
 **Quand les builds sont-ils mis à jour ?**
 Un build est « à jour » pour la journée : le premier pick d'un champion dans la journée le redemande à OP.GG, puis il est gardé jusqu'au lendemain. Il n'y a pas de rafraîchissement en arrière-plan : « Tout télécharger » (Réglages) met à jour d'un coup tous les builds qui ne datent pas d'aujourd'hui, et ceux que tu joues se mettent à jour d'eux-mêmes. Si OP.GG ne répond pas, le dernier build connu est gardé. La date de chaque build est indiquée dans la bibliothèque (en gris si elle n'est pas d'aujourd'hui) et sous le build en champ select.
+
+**Comment l'ARAM est-il détecté ?**
+Le client active le banc de remplaçants en ARAM : lolbuilds s'en sert pour reconnaître la partie. Pour désactiver les builds ARAM et l'« Atypique », mets `aram = false` dans la section `[opgg]` de `config.toml`.
 
 **Est-ce que ça touche à mes pages de runes ?**
 lolbuilds crée ses propres pages, dont le nom commence par `[Auto]`, et ne supprime que celles-là. Si toutes tes pages sont occupées par tes pages personnelles, il n'en supprime aucune et te le signale. Même chose pour les item sets : les tiens ne sont jamais modifiés.

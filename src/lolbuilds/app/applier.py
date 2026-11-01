@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from collections.abc import Sequence
@@ -114,11 +115,13 @@ def lcu_item_set(build: Build) -> dict[str, Any]:
 class BuildApplier:
     def __init__(self, settings: ChampSelectSettings) -> None:
         self.settings = settings
+        self.problems: dict[str, str] = {}  # étape -> raison lisible, pour l'interface (en plus du journal)
 
     async def apply(self, lcu: Lcu, build: Build) -> dict[str, bool]:
         """Applique les étapes activées ; chacune est indépendante (l'échec de l'une n'arrête pas les autres)."""
         log.info("Application de %s (patch %s, %d parties, du %s)", build.name, build.patch, build.sample_size, build.fetched_at)
         steps: dict[str, bool] = {}
+        self.problems = {}
         for name, enabled, step in (
             ("runes", self.settings.apply_runes, self.apply_runes),
             ("spells", self.settings.apply_spells, self.apply_spells),
@@ -181,9 +184,17 @@ class BuildApplier:
             # Sans lecture fiable, un PUT effacerait les sets de l'utilisateur : on s'abstient.
             log.warning("Item set : lecture des sets impossible (%s), abandon", status)
             return False
-        status, data = await lcu.request("PUT", path, merge_item_sets(existing, lcu_item_set(build)))
+        payload = merge_item_sets(existing, lcu_item_set(build))
+        status, data = await lcu.request("PUT", path, payload)
         if status not in (200, 201, 204):
-            log.warning("Item set : refusé (%s) %s", status, data)
+            size = len(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+            others = len(payload["itemSets"]) - 1
+            log.warning("Item set : refusé (%s) %s ; envoyé : %d Ko, %d de tes item sets + le nôtre", status, data, size // 1024, others)
+            if status == 413:
+                self.problems["items"] = (f"Le client refuse d'enregistrer l'item set : tes {others} item sets existants pèsent "
+                                          f"{size // 1024} Ko, trop pour lui. Supprime ceux que tu n'utilises plus (souvent ceux d'autres applis).")
+            else:
+                self.problems["items"] = f"Le client a refusé l'item set (code {status})."
             return False
         log.info("Item set : %s", build.itemSet.get("title"))
         return True

@@ -114,6 +114,7 @@ def run(args: argparse.Namespace) -> int:
         targets = source.targets()
         if args.only:
             targets = filter_only(targets, args.only, static.champions, source.main_role)
+        targets = [*targets, *source.aram_targets({t.champion for t in targets})]  # + un build ARAM par champion
         log.info("%d cibles (%d champions)", len(targets), len({t.champion for t in targets}))
         results = refresh_all(cache, source, targets, today, force=args.force)
     except BuildSourceError as exc:

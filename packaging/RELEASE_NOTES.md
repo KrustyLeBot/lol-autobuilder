@@ -1,13 +1,15 @@
 ## Nouveautés
 
-- **Version portable en un seul fichier** : `lolbuilds-portable-….exe` remplace le zip, qui plantait au démarrage. Il se met à jour tout seul (Réglages › Mise à jour), comme la version installée : le nouvel exe est téléchargé, vérifié, puis remplace l'ancien.
-- **Tout télécharger** : Réglages › Builds en cache prépare les builds de tous les champions d'un coup, avec la progression et la date de la dernière récupération. Les builds se récupèrent aussi tout seuls quand tu choisis un champion.
-- **Plein écran** : un jeu en plein écran garde toujours la priorité. L'épingle se retire tant qu'il est au premier plan et revient ensuite, la fenêtre ne lui vole pas le focus, et le son d'alerte retentit quand même.
+- **ARAM** : en ARAM, lolbuilds applique maintenant un build issu des statistiques d'ARAM d'OP.GG (runes, sorts, items et item set pour l'Abîme hurlant) au lieu d'un build de lane de la faille.
+- **Build atypique** : dans les autres modes, le build ARAM du champion est proposé en dernier, étiqueté « Atypique : build ARAM ». Il n'est jamais appliqué par défaut.
+- **Sorts d'invocateur** : un réglage permet d'appliquer le build et les runes sans jamais toucher à tes sorts (Réglages › Champ select).
+- **Builds en cache** : un build ouvert depuis la bibliothèque s'affiche dans la bibliothèque et ne remplace plus ta sélection de champion en cours (tu vois toujours ton champ select et ton équipe).
+- **Tout télécharger** récupère aussi les builds ARAM. Pour tout désactiver : `aram = false` dans `config.toml` (section `[opgg]`).
 
 ## Corrections
 
-- **Épingle de la fenêtre** : elle ne fait plus planter l'application.
-- **Numéro de version** : la version affichée par l'appli est de nouveau celle de la release (elle proposait sinon une mise à jour déjà installée).
+- **Item set refusé (413 « Content length is too large »)** : les requêtes vers le client sont maintenant envoyées en JSON compact (environ un quart plus léger), et si le client refuse encore l'item set parce que ceux du compte sont trop volumineux, l'appli l'explique (nombre et poids de tes item sets) au lieu d'une simple croix rouge.
+- **Alerte de ton tour** : une erreur dans la page empêchait le son de retentir quand c'était à toi de bannir ou de choisir (avec « Fenêtre au premier plan » activé). Corrigé.
 
 ## Mettre à jour
 

@@ -374,6 +374,7 @@ img { display: block; max-width: 100%; }
 .tag.alt { color: var(--text-dim); background: var(--ink-3); border-color: var(--line); }
 .tag.vs { color: var(--loss); background: color-mix(in srgb, var(--loss) 12%, transparent); border-color: color-mix(in srgb, var(--loss) 45%, transparent); }
 .tag.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.tag.atypical { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
 
 .pickbar { display: grid; gap: 6px; }
 .pickbar-track { height: 4px; background: var(--ink-3); }
@@ -688,3 +689,8 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
 .tag.good { color: var(--win); background: color-mix(in srgb, var(--win) 12%, transparent); border-color: color-mix(in srgb, var(--win) 40%, transparent); }
 .tag.bad { color: var(--loss); background: color-mix(in srgb, var(--loss) 12%, transparent); border-color: color-mix(in srgb, var(--loss) 40%, transparent); }
 .tag.info { color: var(--text-dim); background: var(--ink-3); border-color: var(--line); }
+
+.lib-detail { display: grid; gap: 18px; }
+.lib-back { justify-self: start; }
+.lib-head[hidden], .lib-table[hidden], .lib-detail[hidden] { display: none; }
+.applied-problem { margin-top: 6px; padding: 8px 12px; font-size: 12px; line-height: 1.5; color: var(--loss); background: color-mix(in srgb, var(--loss) 10%, transparent); border: 1px solid color-mix(in srgb, var(--loss) 35%, transparent); }

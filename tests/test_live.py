@@ -80,7 +80,13 @@ class FakeSource:
         self.static = StaticData(version="16.21.1", champions=champs, items=ItemCatalog())
         self._roles = None
         self.fail = fail
+        self.aram_perk: int | None = None  # None : le build ARAM est identique au build classé
         self.calls: list[str] = []
+
+    def aram_targets(self, champions):
+        from lolbuilds.models import Target
+
+        return [Target(c, "aram") for c in sorted(set(champions))]
 
     def roles(self):
         self.calls.append("roles")
@@ -91,7 +97,12 @@ class FakeSource:
         if self.fail:
             raise BuildSourceError("hors ligne")
         analysis = parse_toon((FIXTURES / "opgg_fizz_mid.txt").read_text(encoding="utf-8"))
-        return build_from_analysis(analysis, champion=champion, champion_id=103, role=role, patch="16.21")
+        build = build_from_analysis(analysis, champion=champion, champion_id=103, role=role, patch="16.21")
+        if role == "aram" and self.aram_perk:
+            build.variants[0]["perks"][0] = self.aram_perk
+            build.variants[0]["subStyle"] = 8300
+            build.perks[0] = self.aram_perk
+        return build
 
     def fetch_matchup(self, champion, role, opponent):
         self.calls.append(f"matchup {champion} {opponent}")
@@ -421,7 +432,12 @@ class PrefetchSource:
         self.prepared: list = []
 
     def targets(self):
-        return self.targets_list
+        return list(self.targets_list)
+
+    def aram_targets(self, champions):
+        from lolbuilds.models import Target
+
+        return [Target(c, "aram") for c in sorted(set(champions))]
 
     def prepare(self, stale):
         self.prepared = list(stale)
@@ -437,9 +453,106 @@ def test_prefetch_all_updates_stale_builds_and_keeps_going_on_error(tmp_path):
     live = LiveBuilds(Config(cache_dir=tmp_path), cache, source=PrefetchSource())
     steps: list[tuple[int, int]] = []
     counts = live.prefetch_all(lambda done, total: steps.append((done, total)))
-    assert counts == {"total": 2, "fresh": 0, "updated": 1, "failed": 1}
-    assert steps == [(1, 2), (2, 2)]
+    # 2 builds classés + 2 builds ARAM (un par champion) ; Syndra échoue partout
+    assert counts == {"total": 4, "fresh": 0, "updated": 2, "failed": 2}
+    assert steps == [(1, 4), (2, 4), (3, 4), (4, 4)]
     assert cache.load("Ahri", "middle") is not None and cache.load("Syndra", "middle") is None
+    assert cache.load("Ahri", "aram") is not None
     # relancé le jour même : ce qui est à jour n'est pas retéléchargé
     again = live.prefetch_all()
-    assert again["fresh"] == 1 and again["updated"] == 0
+    assert again["fresh"] == 2 and again["updated"] == 0
+
+
+# --------------------------------------------------------------------------- ARAM
+
+def aram_session(champion_id=103):
+    s = session(champion_id, position="")
+    s["benchEnabled"] = True  # le client active le banc de remplaçants en ARAM
+    return s
+
+
+def test_aram_champ_select_uses_the_aram_build(ctrl):
+    run(ctrl, aram_session())
+    cur = ctrl.state["current"]
+    assert ctrl.state["champSelect"]["mode"] == "aram"
+    assert cur["mode"] == "aram" and cur["role"] == "aram" and cur["roles"] == [] and cur["opponent"] is None
+    assert cur["build"]["variants"][0]["tags"] == ["Build ARAM"]
+    assert cur["build"]["itemSet"]["associatedMaps"] == [12]  # sinon absent de la boutique d'ARAM
+    calls = ctrl.live.source.calls
+    assert "build Ahri aram" in calls and not any(c.startswith(("matchup", "roles", "build Ahri middle")) for c in calls)
+    assert ctrl.state["applied"]["auto"]
+
+
+def test_aram_build_is_fetched_once_per_day(ctrl):
+    run(ctrl, aram_session())
+    asyncio.run(ctrl._live_refresh())
+    assert ctrl.live.source.calls.count("build Ahri aram") == 1
+
+
+def test_aram_option_off_keeps_the_ranked_behaviour(tmp_path, monkeypatch):
+    from lolbuilds.config import OpggSettings
+
+    monkeypatch.setattr(server, "APPLY_DEBOUNCE", 0)
+    c = Controller(Config(cache_dir=tmp_path, opgg=OpggSettings(aram=False)))
+    c.live = LiveBuilds(c.cfg, c.cache, source=FakeSource())
+    c.champions = c.live.source.static.champions
+    c.lcu = FakeLcu()
+    run(c, aram_session())
+    assert not any("aram" in call for call in c.live.source.calls)
+    assert c.state["current"]["mode"] == "classic"
+
+
+def test_ranked_gets_the_aram_build_as_last_atypical_proposal(ctrl):
+    ctrl.live.source.aram_perk = 8229
+    run(ctrl, ahri_vs([134]))
+    variants = ctrl.state["current"]["build"]["variants"]
+    assert [v["tags"][0] for v in variants] == ["Contre Syndra", "Contre Syndra", "Recommandé OP.GG", "Atypique : build ARAM"]
+    assert variants[-1]["perks"][0] == 8229
+    assert ctrl.state["applied"]["variant"] == 0  # jamais appliqué par défaut
+    assert ctrl.live.source.calls.count("build Ahri aram") == 1
+
+
+def test_atypical_proposal_skipped_when_identical_to_the_ranked_build(ctrl):
+    run(ctrl, ahri_vs([134]))  # build ARAM de la fausse source = build classé
+    tags = [v["tags"][0] for v in ctrl.state["current"]["build"]["variants"]]
+    assert "Atypique : build ARAM" not in tags
+
+
+def test_atypical_option_off_makes_no_aram_request(tmp_path, monkeypatch):
+    from lolbuilds.config import OpggSettings
+
+    monkeypatch.setattr(server, "APPLY_DEBOUNCE", 0)
+    c = Controller(Config(cache_dir=tmp_path, opgg=OpggSettings(aram=False)))
+    c.live = LiveBuilds(c.cfg, c.cache, source=FakeSource())
+    c.champions = c.live.source.static.champions
+    c.lcu = FakeLcu()
+    c.live.source.aram_perk = 8229
+    run(c, ahri_vs([134]))
+    assert not any("aram" in call for call in c.live.source.calls)
+
+
+def test_aram_build_is_not_a_lane_build(tmp_path):
+    cache = BuildCache(tmp_path)
+    cache.save(make_build())
+    cache.save(make_build(role="aram", name="Ahri ARAM"))
+    assert [b.role for b in cache.builds_for_champion("Ahri")] == ["middle"]
+    assert [p.name for p in cache.build_paths()] == ["Ahri_middle.json"]
+
+
+def test_library_peek_never_touches_the_champ_select(ctrl):
+    run(ctrl, ahri_vs([134]))
+    before = ctrl.state["current"]
+    ctrl.cache.save(make_build(champion="Syndra", role="top", name="Syndra Top"))
+    peek = ctrl.peek_build(134, "top")
+    assert peek["champion"] == "Syndra" and peek["build"]["role"] == "top" and peek["roles"] == ["top"]
+    assert ctrl.state["current"] is before and before["champion"] == "Ahri"  # la sélection en cours est intacte
+    assert ctrl.build.champion == "Ahri"
+    missing = ctrl.peek_build(134, "jungle")
+    assert missing["build"] is None
+
+
+def test_library_peek_lists_the_aram_build_as_a_tab(ctrl):
+    ctrl.cache.save(make_build())
+    ctrl.cache.save(make_build(role="aram", name="Ahri ARAM"))
+    peek = ctrl.peek_build(103, "aram")
+    assert peek["mode"] == "aram" and peek["roles"] == ["middle", "aram"]
