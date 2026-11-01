@@ -24,8 +24,82 @@ from typing import Any
 from .. import updater
 from ..config import default_config_path, load_config, setup_logging
 from .server import Controller, start_server
+from .winstate import fullscreen_app_active
 
 log = logging.getLogger("lolbuilds.app")
+
+
+def _set_top_most(window: Any, on_top: bool) -> None:
+    """« Toujours au premier plan », exécuté sur le thread de la fenêtre.
+
+    `window.on_top = …` de pywebview modifie `TopMost` directement depuis le thread qui appelle (ici celui de
+    l'API JS), alors que WinForms n'accepte de toucher à une fenêtre que depuis son propre thread : l'appli
+    plantait au clic sur l'épingle. Les autres actions de pywebview (réduire, restaurer…) passent, elles,
+    par `Invoke`, comme ici."""
+    from System import Func, Type  # type: ignore[import-not-found]  # pythonnet : Windows seulement
+    from webview.platforms import winforms
+
+    form = winforms.BrowserView.instances.get(window.uid)
+    if form is None:
+        return
+
+    def apply() -> None:
+        form.TopMost = on_top
+
+    form.Invoke(Func[Type](apply))
+
+
+class PinController:
+    """« Toujours au premier plan » (l'épingle) et ramener la fenêtre devant pour l'alerte, sans gêner un jeu.
+
+    Un jeu en plein écran garde la priorité : tant qu'il est au premier plan, l'épingle est suspendue (la fenêtre
+    ne passe pas par-dessus, ne lui vole pas le focus) et elle revient toute seule quand il est fermé. Le son, lui,
+    est joué par la page et ne dépend pas de la fenêtre : il se fait entendre dans tous les cas."""
+
+    def __init__(self, set_top_most: Any, busy: Any) -> None:
+        self._set_top_most = set_top_most  # (bool) -> None, sur le thread de la fenêtre
+        self._busy = busy  # () -> bool : une appli plein écran a la main
+        self.pinned = False  # voulu par l'utilisateur
+        self.suspended = False  # épinglée, mais mise en retrait pour un jeu plein écran
+        self._lock = threading.Lock()
+
+    def toggle(self) -> bool:
+        with self._lock:
+            want = not self.pinned
+            if want and not self._busy():
+                self._set_top_most(True)
+            elif not want and not self.suspended:
+                self._set_top_most(False)
+            self.pinned = want
+            self.suspended = want and self._busy()
+            return self.pinned
+
+    def poll(self) -> None:
+        """Appelé régulièrement : suspend l'épingle devant un jeu plein écran, la rétablit ensuite."""
+        with self._lock:
+            if not self.pinned:
+                return
+            busy = self._busy()
+            if busy and not self.suspended:
+                self._set_top_most(False)
+                self.suspended = True
+            elif not busy and self.suspended:
+                self._set_top_most(True)
+                self.suspended = False
+
+    def bring_to_front(self) -> bool:
+        """Passage bref au premier plan (Windows refuse de voler le focus autrement). Faux si un jeu a la main."""
+        with self._lock:
+            if self._busy():
+                return False
+            if self.pinned:
+                return True  # déjà au premier plan
+            self._set_top_most(True)
+        time.sleep(0.4)
+        with self._lock:
+            if not self.pinned:
+                self._set_top_most(False)
+        return True
 
 
 class WindowApi:
@@ -33,6 +107,22 @@ class WindowApi:
 
     def __init__(self) -> None:
         self._window: Any = None
+        self.pin = PinController(self._top_most, fullscreen_app_active)
+
+    def _top_most(self, on_top: bool) -> None:
+        _set_top_most(self._window, on_top)
+
+    def start_watching(self) -> None:
+        """Surveille les jeux plein écran (épingle suspendue puis rétablie)."""
+        def loop() -> None:
+            while True:
+                time.sleep(1.5)
+                try:
+                    self.pin.poll()
+                except Exception:  # noqa: BLE001
+                    log.exception("Surveillance du plein écran")
+
+        threading.Thread(target=loop, name="lolbuilds-pin", daemon=True).start()
 
     def minimize(self) -> None:
         self._window.minimize()
@@ -41,19 +131,22 @@ class WindowApi:
         self._window.destroy()
 
     def toggle_on_top(self) -> bool:
-        self._window.on_top = not self._window.on_top
-        return self._window.on_top
+        try:
+            return self.pin.toggle()
+        except Exception:  # noqa: BLE001  l'épingle ne doit jamais faire tomber l'appli
+            log.exception("Impossible de changer « toujours au premier plan »")
+            return self.pin.pinned
 
     def focus(self) -> None:
         """Ramène la fenêtre devant le client League (c'est au joueur de bannir ou de choisir)."""
-        w = self._window
-        w.restore()
-        if w.on_top:  # épinglée : déjà au premier plan
+        if fullscreen_app_active():
+            log.info("Alerte : un jeu plein écran a la main, la fenêtre reste derrière (le son est joué)")
             return
-        # Windows refuse de voler le focus : un passage bref en « toujours au premier plan » suffit.
-        w.on_top = True
-        time.sleep(0.4)
-        w.on_top = False
+        try:
+            self._window.restore()
+            self.pin.bring_to_front()
+        except Exception:  # noqa: BLE001
+            log.exception("Impossible de ramener la fenêtre au premier plan")
 
 
 def _alert(text: str) -> None:
@@ -152,10 +245,17 @@ def run(args: argparse.Namespace) -> int:
         return 0
 
     # Sons d'alerte sans clic préalable : WebView2 applique sinon la politique d'autoplay de Chromium.
-    os.environ.setdefault("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--autoplay-policy=no-user-gesture-required")
+    # Et sans bridage quand la fenêtre est cachée, réduite ou recouverte par un jeu plein écran : l'alerte sonore
+    # doit retentir même si la page n'est pas visible.
+    os.environ.setdefault(
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+        "--autoplay-policy=no-user-gesture-required --disable-background-timer-throttling "
+        "--disable-renderer-backgrounding --disable-backgrounding-occluded-windows",
+    )
     import webview  # import local : seulement pour le mode fenêtre
 
     api = WindowApi()
+    api.start_watching()
     api._window = webview.create_window(
         "lolbuilds", url + "?desktop=1", js_api=api, width=1240, height=800, min_size=(960, 640),
         frameless=True, easy_drag=False, background_color="#0A0D13",

@@ -146,6 +146,8 @@ class Controller:
             "counterPicks": None,  # bons picks contre l'adversaire de lane, avant le pick
             "banSuggestions": None,  # pendant la phase de bans : menaces pour mon champion ou tier list
             # Mise à jour (Réglages) : idle | checking | uptodate | available | downloading | installing | error
+            # Téléchargement de tous les builds (Réglages) : idle | running | done | error
+            "prefetch": {"status": "idle", "done": 0, "total": 0, "updated": 0, "failed": 0, "fresh": 0, "error": None},
             "update": {"status": "idle", "current": __version__, "installable": updater.mode() is not None, "mode": updater.mode()},
             "banPick": None,  # champion choisi pour mon ban depuis l'appli : {championId, locked}
             "team": None,  # pendant la partie : {status, players: [...]} (mon équipe, profils OP.GG)
@@ -506,6 +508,40 @@ class Controller:
         asyncio.get_running_loop().call_later(1.5, os._exit, 0)
         return {"ok": True}
 
+    # ------------------------------------------------------------------ téléchargement de tous les builds
+
+    async def start_prefetch(self) -> dict[str, Any]:
+        """Lance le téléchargement de tous les builds en tâche de fond (un seul à la fois)."""
+        if not self.live:
+            return {"ok": False, "error": "Récupération indisponible en mode démo"}
+        pre = self.state["prefetch"]
+        if pre["status"] == "running":
+            return {"ok": False, "error": "Téléchargement déjà en cours"}
+        pre.update(status="running", done=0, total=0, updated=0, failed=0, fresh=0, error=None)
+        await self.broadcast()
+        asyncio.create_task(self._prefetch_task())
+        return {"ok": True}
+
+    async def _prefetch_task(self) -> None:
+        assert self.live
+        pre = self.state["prefetch"]
+        loop = asyncio.get_running_loop()
+
+        def progress(done: int, total: int) -> None:
+            pre.update(done=done, total=total)
+            asyncio.run_coroutine_threadsafe(self.broadcast(), loop)
+
+        try:
+            counts = await asyncio.to_thread(self.live.prefetch_all, progress)
+        except Exception as exc:  # OP.GG injoignable, données du jeu absentes...
+            log.exception("Téléchargement de tous les builds")
+            pre.update(status="error", error=str(exc) or exc.__class__.__name__)
+        else:
+            pre.update(status="done", total=counts["updated"] + counts["failed"], updated=counts["updated"],
+                       failed=counts["failed"], fresh=counts["fresh"])
+        self.state["lastPrefetch"] = self._last_prefetch()
+        await self.broadcast()
+
     # ------------------------------------------------------------------ OP.GG au moment du pick
 
     async def refresh_static(self) -> None:
@@ -751,7 +787,7 @@ def make_app(ctrl: Controller) -> web.Application:
     async def static_data(_req: web.Request) -> web.Response:
         path = ctrl.cfg.cache_dir / "ui_static.json"
         if not path.exists():
-            return web.json_response({"error": "Lancez le prefetch pour télécharger les données du jeu."}, status=404)
+            return web.json_response({"error": "Les données du jeu ne sont pas encore téléchargées : elles arrivent au démarrage de l'appli (connexion Internet nécessaire)."}, status=404)
         return web.FileResponse(path)
 
     @routes.get("/api/library")
@@ -827,6 +863,13 @@ def make_app(ctrl: Controller) -> web.Application:
     async def ban(req: web.Request) -> web.Response:
         body = await req.json()
         result = await ctrl.ban(int(body.get("championId") or 0), bool(body.get("lock")))
+        if not result["ok"]:
+            await ctrl.toast("warn", result["error"])
+        return web.json_response(result)
+
+    @routes.post("/api/prefetch")
+    async def prefetch(_req: web.Request) -> web.Response:
+        result = await ctrl.start_prefetch()
         if not result["ok"]:
             await ctrl.toast("warn", result["error"])
         return web.json_response(result)

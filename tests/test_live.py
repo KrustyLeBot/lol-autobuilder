@@ -406,3 +406,40 @@ def test_team_loaded_when_game_starts(ctrl, monkeypatch):
     assert team["players"][1]["championId"] == 412 and team["players"][1]["rank"] == "Or I"
     ctrl.on_phase("Lobby")
     assert ctrl.state["team"] is None
+
+
+# --------------------------------------------------------------------------- tout télécharger
+
+class PrefetchSource:
+    """Source OP.GG simulée pour « tout télécharger » : deux cibles, l'une en échec."""
+
+    def __init__(self):
+        from lolbuilds.models import Target
+
+        self.static = None
+        self.targets_list = [Target("Ahri", "middle"), Target("Syndra", "middle")]
+        self.prepared: list = []
+
+    def targets(self):
+        return self.targets_list
+
+    def prepare(self, stale):
+        self.prepared = list(stale)
+
+    def fetch_build(self, champion, role):
+        if champion == "Syndra":
+            raise BuildSourceError("OP.GG injoignable")
+        return make_build(champion=champion, role=role)
+
+
+def test_prefetch_all_updates_stale_builds_and_keeps_going_on_error(tmp_path):
+    cache = BuildCache(tmp_path)
+    live = LiveBuilds(Config(cache_dir=tmp_path), cache, source=PrefetchSource())
+    steps: list[tuple[int, int]] = []
+    counts = live.prefetch_all(lambda done, total: steps.append((done, total)))
+    assert counts == {"total": 2, "fresh": 0, "updated": 1, "failed": 1}
+    assert steps == [(1, 2), (2, 2)]
+    assert cache.load("Ahri", "middle") is not None and cache.load("Syndra", "middle") is None
+    # relancé le jour même : ce qui est à jour n'est pas retéléchargé
+    again = live.prefetch_all()
+    assert again["fresh"] == 1 and again["updated"] == 0

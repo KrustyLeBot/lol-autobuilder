@@ -1,12 +1,18 @@
+## Nouveautés
+
+- **Version portable en un seul fichier** : `lolbuilds-portable-….exe` remplace le zip, qui plantait au démarrage. Il se met à jour tout seul (Réglages › Mise à jour), comme la version installée : le nouvel exe est téléchargé, vérifié, puis remplace l'ancien.
+- **Tout télécharger** : Réglages › Builds en cache prépare les builds de tous les champions d'un coup, avec la progression et la date de la dernière récupération. Les builds se récupèrent aussi tout seuls quand tu choisis un champion.
+- **Plein écran** : un jeu en plein écran garde toujours la priorité. L'épingle se retire tant qu'il est au premier plan et revient ensuite, la fenêtre ne lui vole pas le focus, et le son d'alerte retentit quand même.
+
 ## Corrections
 
-- **Prépick** : au début du champ select, lolbuilds n'affiche plus « À toi de bannir » pendant la phase de déclaration. Un bandeau « Prépick : déclare ton champion » s'affiche à la place, et le compte à rebours du ban démarre au vrai début des bans. Les bans suggérés restent visibles pendant le prépick pour préparer ton ban.
-- **Sons d'alerte** : les sons de ton tour de ban et de pick sont de nouveau joués. Ils pouvaient rester muets tant que tu n'avais pas cliqué dans la fenêtre de lolbuilds.
+- **Épingle de la fenêtre** : elle ne fait plus planter l'application.
+- **Numéro de version** : la version affichée par l'appli est de nouveau celle de la release (elle proposait sinon une mise à jour déjà installée).
 
 ## Mettre à jour
 
-- Depuis la **0.2.0** : Réglages › Mise à jour › **Mettre à jour**.
-- Depuis la **0.1.0** : télécharge et lance `lolbuilds-setup-0.2.1.exe` ci-dessous ; les versions suivantes arriveront depuis l'application.
+- Depuis la **0.2.0** ou plus récent : Réglages › Mise à jour › **Mettre à jour**.
+- Le **zip portable** de la 0.2.1 (qui ne démarrait pas toujours) et la **0.1.0** n'ont pas ce bouton : télécharge l'installateur ou l'exe portable ci-dessous une fois ; les versions suivantes arriveront depuis l'application.
 
 ## Télécharger
 

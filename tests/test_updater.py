@@ -139,3 +139,15 @@ def test_swap_exe_restores_on_failure(tmp_path):
 
 def test_no_automatic_update_from_sources():
     assert updater.mode() is None and updater.cleanup_previous() is True
+
+
+def test_version_matches_pyproject():
+    """L'appli se compare aux releases avec `__version__` : si elle n'est pas alignée sur pyproject.toml
+    (la version taguée), elle proposerait pour toujours une mise à jour qu'elle a déjà."""
+    import tomllib
+    from pathlib import Path
+
+    from lolbuilds import __version__
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    assert tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"] == __version__
