@@ -326,3 +326,83 @@ def test_ban_suggestions_threats_for_declared_champion(ctrl):
 def test_no_ban_suggestions_once_banned(ctrl):
     run(ctrl, ban_phase(my_ban_done=True))
     assert ctrl.state["banSuggestions"] is None
+
+
+# --------------------------------------------------------------------------- ban depuis l'appli
+
+def test_ban_select_then_lock(ctrl):
+    asyncio.run(ctrl.on_session(ban_phase()))
+    ctrl.lcu.calls.clear()
+    assert asyncio.run(ctrl.ban(55, lock=False))["ok"]
+    assert ctrl.lcu.calls == [("PATCH", "/lol-champ-select/v1/session/actions/11", {"championId": 55})]
+    assert asyncio.run(ctrl.ban(55, lock=True))["ok"]
+    assert ctrl.lcu.calls[-1] == ("POST", "/lol-champ-select/v1/session/actions/11/complete", None)
+    assert ctrl.state["banPick"] == {"championId": 55, "locked": True, "action": 11}
+
+
+def test_ban_refused_outside_my_ban_turn(ctrl):
+    asyncio.run(ctrl.on_session(ban_phase(phase="PLANNING")))  # prépick : pas encore mon tour
+    ctrl.lcu.calls.clear()
+    assert not asyncio.run(ctrl.ban(55, lock=True))["ok"]
+    s = ban_phase()
+    s["actions"][-1][0]["type"] = "pick"  # mon action en cours est un pick : jamais touchée
+    asyncio.run(ctrl.on_session(s))
+    assert not asyncio.run(ctrl.ban(55, lock=True))["ok"]
+    assert not any(m in ("PATCH", "POST") for m, _, _ in ctrl.lcu.calls)
+
+
+def test_ban_refused_for_taken_or_wanted_champion(ctrl):
+    asyncio.run(ctrl.on_session(ban_phase(bans=[134])))
+    assert "déjà banni" in asyncio.run(ctrl.ban(134, lock=True))["error"]
+    assert "allié" in asyncio.run(ctrl.ban(105, lock=True))["error"]  # Fizz voulu par un allié
+
+
+# --------------------------------------------------------------------------- mon équipe en partie
+
+PROFILE = {"data": {"summoner": {
+    "league_stats": [{"game_type": "SOLORANKED", "tier_info": {"tier": "GOLD", "division": 1, "lp": 32},
+                      "win": 70, "lose": 30, "is_hot_streak": True, "is_fresh_blood": False, "is_veteran": True}],
+    "most_champions": {"play": 100, "win": 70, "champion_stats": [
+        {"id": 103, "champion_name": "Ahri", "play": 40, "win": 26, "kill": 300, "death": 100, "assist": 200},
+        {"id": 134, "champion_name": "Syndra", "play": 2, "win": 1, "kill": 10, "death": 5, "assist": 5},
+    ]},
+}}}
+
+
+def test_player_card_indications():
+    from lolbuilds.players import player_card
+
+    card = player_card(PROFILE, 103, "Ahri")
+    assert card["rank"] == "Or I" and card["lp"] == 32 and card["winrate"] == 0.7
+    assert card["champion"] == {"games": 40, "winrate": 0.65, "kda": 5.0}
+    texts = [t["text"] for t in card["tags"]]
+    assert {"En série de victoires", "Main Ahri", "65 % sur Ahri", "Bonne saison", "Vétéran du rang"} <= set(texts)
+    assert "Peu joué Syndra cette saison" in [t["text"] for t in player_card(PROFILE, 134, "Syndra")["tags"]]
+    assert player_card({}, 1, "Annie")["rank"] == "Non classé"
+
+
+def test_team_loaded_when_game_starts(ctrl, monkeypatch):
+    from lolbuilds import players
+
+    everyone = [
+        {"riotIdGameName": "Moi", "riotIdTagLine": "EUW", "team": "ORDER", "position": "MIDDLE",
+         "rawChampionName": "game_character_displayname_Ahri"},
+        {"riotIdGameName": "Pote", "riotIdTagLine": "123", "team": "ORDER", "position": "UTILITY",
+         "rawChampionName": "game_character_displayname_Thresh"},
+        {"riotIdGameName": "Ennemi", "riotIdTagLine": "1", "team": "CHAOS", "position": "MIDDLE",
+         "rawChampionName": "game_character_displayname_Syndra"},
+    ]
+    monkeypatch.setattr(players, "live_players", lambda: ("Moi#EUW", everyone))
+    monkeypatch.setattr(ctrl.live, "player_profile", lambda name, tag, region: PROFILE)
+
+    async def scenario():
+        ctrl.on_phase("InProgress")
+        await ctrl._team_task
+
+    asyncio.run(scenario())
+    team = ctrl.state["team"]
+    assert team["status"] == "ok" and [p["riotId"] for p in team["players"]] == ["Moi#EUW", "Pote#123"]
+    assert team["players"][0]["isMe"] and team["players"][0]["championId"] == 103
+    assert team["players"][1]["championId"] == 412 and team["players"][1]["rank"] == "Or I"
+    ctrl.on_phase("Lobby")
+    assert ctrl.state["team"] is None

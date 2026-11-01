@@ -281,7 +281,7 @@ function renderLive() {
   timerEnds = cs?.timer?.endsAt || null;
   if (!cur) {
     html = cs ? turnHtml(cs) + draftHtml(cs, null) + banHtml(state.banSuggestions) + counterHtml(state.counterPicks, null) + emptyHtml("pick")
-      : emptyHtml(state.connection);
+      : state.team ? teamHtml(state.team) : emptyHtml(state.connection);
   } else {
     const b = cur.build;
     const key = `${cur.championId}:${b?.role}:${b?.fetched_at}:${b?.variants?.length}`;
@@ -377,16 +377,58 @@ function banHtml(bs) {
   const role = ROLE_LABEL[bs.role] || "";
   const title = bs.mode === "threats" ? `Bans suggérés · menaces pour ${esc(champ(bs.championId)?.name || "")}` : `Bans suggérés · les plus forts en ${role}`;
   const note = bs.mode === "threats" ? "winrate de ces champions contre le tien (OP.GG)" : "tier list OP.GG du moment";
-  const body = !bs.picks.length ? '<p class="cp-msg dim">Rien à suggérer : tous les candidats sont déjà bannis ou pris.</p>'
-    : `<div class="cp-list">${bs.picks.map((p) => `
-      <div class="cp ban" ${tipAttr("champion", p.championId)}>
-        ${img("champion", p.championId, "")}
+  // Pendant MON tour de ban (et seulement là), un clic sélectionne le champion dans le client, un second le verrouille.
+  const myTurn = state.champSelect?.turn?.type === "ban";
+  const chosen = state.banPick && state.banPick.action === state.champSelect?.turn?.id ? state.banPick : null;
+  const card = (p) => {
+    const inner = `${img("champion", p.championId, "")}
         <span class="cp-txt"><span class="cp-name">${esc(champ(p.championId)?.name || "")}</span>
           <span class="cp-games num">${bs.mode === "threats" ? `${int(p.games)} parties` : `Tier ${p.tier} · ${Math.round(p.banRate * 100)} % ban`}</span></span>
-        <span class="cp-wr num ${wrClass(p.winrate)}">${pct(p.winrate)}</span>
-      </div>`).join("")}</div>`;
+        <span class="cp-wr num ${wrClass(p.winrate)}">${pct(p.winrate)}</span>`;
+    if (!myTurn) return `<div class="cp ban" ${tipAttr("champion", p.championId)}>${inner}</div>`;
+    const sel = chosen?.championId === p.championId;
+    return `<button type="button" class="cp ban pickable${sel ? " selected" : ""}" data-ban="${p.championId}" aria-pressed="${sel}"
+      aria-label="Bannir ${esc(champ(p.championId)?.name || "")}">${inner}</button>`;
+  };
+  const body = !bs.picks.length ? '<p class="cp-msg dim">Rien à suggérer : tous les candidats sont déjà bannis ou pris.</p>'
+    : `<div class="cp-list">${bs.picks.map(card).join("")}</div>`;
+  const lock = myTurn && chosen && !chosen.locked
+    ? `<button type="button" class="btn ban-lock" data-banlock="${chosen.championId}">Bannir ${esc(champ(chosen.championId)?.name || "")}</button>` : "";
+  const hint = myTurn ? (chosen?.locked ? "ban verrouillé" : "clique un champion pour le sélectionner, puis Bannir")
+    : `${role} · ${note}`;
   return `<section class="section counters bans-sugg"><div class="section-head"><h2 class="section-title">${title}</h2>
-    <span class="section-note">${role} · ${note}</span></div>${body}</section>`;
+    <span class="section-note">${hint}</span>${lock}</div>${body}</section>`;
+}
+
+/** Partie en cours : les joueurs de mon équipe, avec leur profil OP.GG résumé. */
+function teamHtml(team) {
+  const ROLE_OF = { top: "top", jungle: "jungle", middle: "middle", mid: "middle", bottom: "bottom", utility: "utility", support: "utility" };
+  const cards = team.players.map((p) => {
+    const role = ROLE_OF[p.position] || "";
+    const name = esc(p.riotId.split("#")[0]);
+    const tag = esc(p.riotId.split("#")[1] || "");
+    let body;
+    if (p.status === "loading") body = '<p class="cp-msg"><span class="loading">Profil OP.GG…</span></p>';
+    else if (p.status === "error") body = '<p class="cp-msg dim">Profil introuvable sur OP.GG</p>';
+    else {
+      const c = p.champion;
+      body = `<div class="tm-rank"><b>${esc(p.rank)}</b>${p.lp != null ? `<span class="num"> · ${p.lp} LP</span>` : ""}</div>
+        <div class="tm-line num">Saison : <b class="${wrClass(p.winrate)}">${pct(p.winrate, 0)}</b> sur ${int(p.games)} parties</div>
+        <div class="tm-line num">${esc(champ(p.championId)?.name || "Ce champion")} : ${c ? `<b class="${wrClass(c.winrate)}">${pct(c.winrate, 0)}</b> sur ${int(c.games)} · KDA ${c.kda}` : "aucune partie classée"}</div>
+        <div class="tags">${p.tags.map((t) => `<span class="tag ${t.kind}">${esc(t.text)}</span>`).join("")}</div>
+        <div class="tm-mains">${p.mains.map((id) => img("champion", id, "", tipAttr("champion", id))).join("")}</div>`;
+    }
+    return `<article class="tm-card${p.isMe ? " me" : ""}">
+      <header class="tm-head">${p.championId ? img("champion", p.championId, "tm-champ") : ""}
+        <div class="tm-id"><span class="tm-name">${name}<small>#${tag}</small></span>
+          <span class="tm-role">${role ? roleIcon(role) + (ROLE_LABEL[role] || "") : ""}${p.isMe ? " · toi" : ""}</span></div></header>
+      ${body}</article>`;
+  }).join("");
+  const waiting = team.status === "loading" && !team.players.length
+    ? '<p class="cp-msg"><span class="loading">En attente du chargement de la partie…</span></p>' : "";
+  const none = team.status === "unavailable" ? '<p class="cp-msg dim">Les infos de la partie ne sont pas disponibles.</p>' : "";
+  return `<section class="section team-view"><div class="section-head"><h2 class="section-title">Ton équipe</h2>
+    <span class="section-note">Profils OP.GG · classé solo, saison en cours</span></div>${waiting}${none}<div class="tm-grid">${cards}</div></section>`;
 }
 
 function counterHtml(cp, cur) {
@@ -588,9 +630,13 @@ function setView(v) {
 
 /* ------------------------------------------------------------------ interactions */
 document.addEventListener("click", async (e) => {
-  const t = e.target.closest("[data-variant],[data-spells],[data-role],[data-goto],[data-open],[data-view],[data-librole],[data-key],[data-opponent],[data-preview]");
+  const t = e.target.closest("[data-variant],[data-spells],[data-role],[data-goto],[data-open],[data-view],[data-librole],[data-key],[data-opponent],[data-preview],[data-ban],[data-banlock]");
   if (!t) return;
-  if (t.dataset.preview) {
+  if (t.dataset.ban) {
+    post("/api/ban", { championId: Number(t.dataset.ban), lock: false });
+  } else if (t.dataset.banlock) {
+    post("/api/ban", { championId: Number(t.dataset.banlock), lock: true });
+  } else if (t.dataset.preview) {
     post("/api/preview", { championId: Number(t.dataset.preview) });
   } else if (t.dataset.opponent) {
     post("/api/opponent", { championId: Number(t.dataset.opponent) });

@@ -9,8 +9,9 @@ Une alternative légère à Blitz ou Porofessor, centrée sur une seule chose : 
 - **Build automatique** : dès que tu verrouilles ton champion, la page de runes, les sorts (Flash sur D ou F, au choix) et l'item set sont envoyés au client.
 - **Builds contre ton adversaire** : quand ton adversaire de lane est connu, lolbuilds propose les runes et les items qui gagnent le plus dans ce duel précis.
 - **Bons picks** : si ton adversaire a choisi avant toi, tu vois les champions qui le battent, parmi ceux que tu possèdes.
-- **Bans suggérés** : pendant ton tour de ban, les champions les plus dangereux pour toi ou les plus forts de ta lane.
+- **Bans suggérés** : pendant ton tour de ban, les champions les plus dangereux pour toi ou les plus forts de ta lane. Un clic sélectionne le champion dans ton ban, **Bannir** le verrouille (ça ne touche jamais à ton pick).
 - **Alerte quand c'est ton tour** : la fenêtre repasse devant et un son est joué au moment de bannir ou de choisir.
+- **Ton équipe en partie** : une fois la partie chargée, le rang, le winrate de la saison et les résultats de chaque allié sur son champion (OP.GG), avec des indications : série de victoires, main du champion, peu d'expérience dessus…
 - **Thèmes** aux couleurs de Runeterra : Hextech, Noxus, Piltover et Ionia.
 
 Les statistiques viennent d'OP.GG (parties classées Émeraude et plus).

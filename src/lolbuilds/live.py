@@ -28,6 +28,7 @@ from .cache import BuildCache
 from .config import Config
 from .ddragon import DataDragon, StaticData
 from .models import Build
+from .players import PROFILE_FIELDS
 from .sources import BuildSourceError
 from .sources.opgg import OpggSource
 
@@ -56,6 +57,7 @@ class LiveBuilds:
         self._static: StaticData | None = source.static if source else None
         self._lock = threading.Lock()  # le client OP.GG n'est pas partagé entre threads
         self._roles: dict[str, dict[str, float]] | None = None
+        self._profiles: dict[tuple[str, str, str], Any] = {}
         self._roles_date = ""
 
     # ------------------------------------------------------------------ données statiques
@@ -192,6 +194,17 @@ class LiveBuilds:
         _write(path, {"date": today, "counters": counters})
         log.info("OP.GG : %d picks évalués contre %s %s", len(counters), enemy, role)
         return counters
+
+    def player_profile(self, game_name: str, tag: str, region: str) -> Any:
+        """Profil OP.GG d'un joueur (gardé en mémoire le temps de la session de l'appli)."""
+        key = (game_name.lower(), tag.lower(), region)
+        if key not in self._profiles:
+            with self._lock:
+                self._profiles[key] = self.source.client.call("lol_get_summoner_profile", {
+                    "game_name": game_name, "tag_line": tag, "region": region, "lang": "en_US",
+                    "desired_output_fields": PROFILE_FIELDS,
+                })
+        return self._profiles[key]
 
     def close(self) -> None:
         if self._source:

@@ -61,6 +61,9 @@ META_FIELDS = [f"data.positions.{p}[].{{champion,play,role_rate,win_rate}}" for 
 
 # --------------------------------------------------------------------------- format de réponse
 
+LITERALS = {"true": True, "false": False, "null": None}
+
+
 def parse_toon(text: str) -> Any:
     """Relit la réponse compacte d'OP.GG en dicts/listes Python."""
     fields: dict[str, list[str]] = {}
@@ -81,6 +84,8 @@ def parse_toon(text: str) -> Any:
             return node.value
         if isinstance(node, ast.List | ast.Tuple):
             return [conv(e) for e in node.elts]
+        if isinstance(node, ast.Name) and node.id in LITERALS:  # booléens / null écrits à la JSON
+            return LITERALS[node.id]
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
             return -conv(node.operand)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):

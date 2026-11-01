@@ -23,7 +23,7 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 
-from .. import ROLE_LABELS, ROLES, __version__, updater
+from .. import ROLE_LABELS, ROLES, __version__, players, updater
 from ..cache import BuildCache
 from .applier import BuildApplier, DryRunLcu, Lcu, find_build
 from ..config import Config
@@ -129,6 +129,7 @@ class Controller:
         self._preview: int | None = None  # champion proposé cliqué avant le pick (aperçu)
         self._pool: tuple[set[int] | None, dict[int, int]] | None = None  # (possédés, maîtrises) du joueur
         self._counters: tuple[tuple[str, str], list[dict[str, Any]]] | None = None
+        self._team_task: asyncio.Task[None] | None = None
         self.state: dict[str, Any] = {
             "connection": "demo" if demo else "waiting",
             "phase": "None",
@@ -145,6 +146,8 @@ class Controller:
             "banSuggestions": None,  # pendant la phase de bans : menaces pour mon champion ou tier list
             # Mise à jour (Réglages) : idle | checking | uptodate | available | downloading | installing | error
             "update": {"status": "idle", "current": __version__, "installable": updater.installed()},
+            "banPick": None,  # champion choisi pour mon ban depuis l'appli : {championId, locked}
+            "team": None,  # pendant la partie : {status, players: [...]} (mon équipe, profils OP.GG)
         }
 
     # ------------------------------------------------------------------ état
@@ -230,6 +233,7 @@ class Controller:
             self._preview, self._pool = None, None
             self.state["counterPicks"] = None
             self.state["banSuggestions"] = None
+            self.state["banPick"] = None
             await self.broadcast()
             return
         summary = self._summarize_session(s)
@@ -368,6 +372,93 @@ class Controller:
             self.state["applied"]["spells"] = option
         await self.toast("ok", "Sorts d'invocateur mis à jour")
         return {"ok": True}
+
+    # ------------------------------------------------------------------ ban depuis l'appli
+
+    async def ban(self, champion_id: int, lock: bool) -> dict[str, Any]:
+        """Survole (puis verrouille si `lock`) un champion dans MON ban en cours ; jamais une action de pick."""
+        cs = self.state["champSelect"] or {}
+        turn = cs.get("turn")
+        if not self.lcu or not turn or turn.get("type") != "ban" or turn.get("id") is None:
+            return {"ok": False, "error": "Ce n'est pas ton tour de bannir"}
+        if champion_id in {b["championId"] for b in cs.get("bans", [])} | {e["championId"] for e in cs.get("enemies", [])}:
+            return {"ok": False, "error": "Ce champion est déjà banni ou choisi"}
+        if champion_id in {a["championId"] or a["intent"] for a in cs.get("allies", []) if not a["isMe"]}:
+            return {"ok": False, "error": "Un allié veut jouer ce champion"}
+        path = f"/lol-champ-select/v1/session/actions/{turn['id']}"
+        status, data = await self.lcu.request("PATCH", path, {"championId": champion_id})
+        if status not in (200, 204):
+            log.warning("Ban : survol refusé (%s) %s", status, data)
+            return {"ok": False, "error": "Le client a refusé ce ban"}
+        if lock:
+            status, data = await self.lcu.request("POST", path + "/complete")
+            if status not in (200, 204):
+                log.warning("Ban : verrouillage refusé (%s) %s", status, data)
+                return {"ok": False, "error": "Le client a refusé de verrouiller le ban"}
+        self.state["banPick"] = {"championId": champion_id, "locked": lock, "action": turn["id"]}
+        name = self.champions.by_key.get(champion_id, str(champion_id))
+        await self.toast("ok", f"{name} banni" if lock else f"{name} sélectionné pour ton ban")
+        return {"ok": True}
+
+    # ------------------------------------------------------------------ mon équipe pendant la partie
+
+    def on_phase(self, phase: str) -> None:
+        """Partie en cours : charge les profils de mon équipe ; sinon on les oublie."""
+        if phase == "InProgress":
+            if self.live and (not self._team_task or self._team_task.done()) and not self.state["team"]:
+                self._team_task = asyncio.create_task(self._load_team())
+        elif phase in ("None", "Lobby", "Matchmaking", "ReadyCheck", "ChampSelect"):
+            if self._team_task and not self._team_task.done():
+                self._team_task.cancel()
+            self.state["team"] = None
+
+    async def _load_team(self) -> None:
+        assert self.live
+        team: dict[str, Any] = {"status": "loading", "players": []}
+        self.state["team"] = team
+        await self.broadcast()
+        region = "EUW"
+        if self.lcu:
+            try:
+                _, loc = await self.lcu.request("GET", "/riotclient/region-locale")
+                region = str((loc or {}).get("region") or region).upper().rstrip("0123456789") or region
+            except Exception:
+                pass
+        for _ in range(120):  # la Live Client Data API répond une fois la partie chargée
+            try:
+                me, everyone = await asyncio.to_thread(players.live_players)
+                if everyone:
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(5)
+        else:
+            team["status"] = "unavailable"
+            await self.broadcast()
+            return
+        mine = next((p for p in everyone if "#".join(players.riot_id(p)).lower() == me.lower()
+                     or str(p.get("riotId") or p.get("summonerName") or "").lower() == me.lower()), None)
+        side = (mine or {}).get("team")
+        allies = [p for p in everyone if p.get("team") == side] if side else everyone[:5]
+        for p in allies:
+            name, tag = players.riot_id(p)
+            champ = players.champion_id(p)
+            key = next((k for k, v in self.champions.by_key.items() if v == champ), None)
+            team["players"].append({"riotId": f"{name}#{tag}", "isMe": p is mine, "championId": key,
+                                    "position": str(p.get("position") or "").lower(), "status": "loading"})
+        await self.broadcast()
+        for entry, p in zip(team["players"], allies):
+            name, tag = players.riot_id(p)
+            try:
+                profile = await asyncio.to_thread(self.live.player_profile, name, tag, region)
+                champ_name = self.champions.names.get(players.champion_id(p), players.champion_id(p))
+                entry.update(players.player_card(profile, entry["championId"], champ_name), status="ok")
+            except Exception as exc:
+                log.warning("Profil OP.GG de %s#%s indisponible : %s", name, tag, exc)
+                entry["status"] = "error"
+            await self.broadcast()
+        team["status"] = "ok"
+        await self.broadcast()
 
     # ------------------------------------------------------------------ mise à jour (releases GitHub)
 
@@ -591,6 +682,7 @@ class Controller:
                 self.state["connection"] = "connected"
                 _, phase = await conn.request("GET", "/lol-gameflow/v1/gameflow-phase")
                 self.state["phase"] = phase or "None"
+                self.on_phase(self.state["phase"])
                 status, session = await conn.request("GET", "/lol-champ-select/v1/session")
                 await self.on_session(session if status == 200 else None)
                 log.info("Connecté au client League (port %s)", creds.port)
@@ -618,6 +710,7 @@ class Controller:
         uri = event.get("uri", "")
         if uri == "/lol-gameflow/v1/gameflow-phase":
             self.state["phase"] = event.get("data") or "None"
+            self.on_phase(self.state["phase"])
             await self.broadcast()
         elif uri == "/lol-champ-select/v1/session":
             deleted = (event.get("eventType") or "").lower() == "delete"
@@ -721,6 +814,14 @@ def make_app(ctrl: Controller) -> web.Application:
         if ctrl.live:
             ctrl._live_dirty.set()
         return web.json_response({"ok": True})
+
+    @routes.post("/api/ban")
+    async def ban(req: web.Request) -> web.Response:
+        body = await req.json()
+        result = await ctrl.ban(int(body.get("championId") or 0), bool(body.get("lock")))
+        if not result["ok"]:
+            await ctrl.toast("warn", result["error"])
+        return web.json_response(result)
 
     @routes.post("/api/update/check")
     async def update_check(_req: web.Request) -> web.Response:

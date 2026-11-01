@@ -660,3 +660,31 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
   color: var(--text-dim); background: var(--ink-0); border: 1px solid var(--line-soft); }
 .rail-btn.has-update::after { content: ""; position: absolute; top: 8px; right: 14px; width: 8px; height: 8px; border-radius: 50%;
   background: var(--teal); box-shadow: 0 0 0 2px var(--ink-0); }
+
+/* ------------------------------------------------------------------ ban depuis l'appli */
+.cp.ban.pickable { cursor: pointer; }
+.cp.ban.pickable:hover { border-color: color-mix(in srgb, var(--loss) 60%, var(--line)); }
+.cp.ban.selected { border-color: var(--loss); background: color-mix(in srgb, var(--loss) 14%, var(--ink-2)); }
+.section-head .ban-lock { margin-left: 12px; background: var(--loss); border-color: var(--loss); color: #fff; }
+.section-head .ban-lock:hover { filter: brightness(1.1); }
+
+/* ------------------------------------------------------------------ mon équipe en partie */
+.tm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 10px; }
+.tm-card { display: grid; gap: 8px; align-content: start; padding: 12px; background: var(--ink-1); border: 1px solid var(--line-soft); min-width: 0; }
+.tm-card.me { border-color: var(--gold-deep); }
+.tm-head { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.tm-champ { width: 44px; height: 44px; border: 1px solid var(--line); flex: none; }
+.tm-id { display: grid; gap: 3px; min-width: 0; }
+.tm-name { font: 600 14px/1.1 var(--f-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-name small { font: 400 11px var(--f-body); color: var(--text-mute); margin-left: 2px; }
+.tm-role { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); }
+.tm-role svg { width: 13px; height: 13px; }
+.tm-rank { font-size: 13px; }
+.tm-rank b { font: 600 15px var(--f-display); }
+.tm-line { font-size: 12px; color: var(--text-dim); }
+.tm-line b { font-weight: 600; }
+.tm-mains { display: flex; gap: 4px; }
+.tm-mains img { width: 22px; height: 22px; border: 1px solid var(--line); }
+.tag.good { color: var(--win); background: color-mix(in srgb, var(--win) 12%, transparent); border-color: color-mix(in srgb, var(--win) 40%, transparent); }
+.tag.bad { color: var(--loss); background: color-mix(in srgb, var(--loss) 12%, transparent); border-color: color-mix(in srgb, var(--loss) 40%, transparent); }
+.tag.info { color: var(--text-dim); background: var(--ink-3); border-color: var(--line); }
