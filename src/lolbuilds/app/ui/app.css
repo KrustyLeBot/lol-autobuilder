@@ -650,3 +650,12 @@ input[type="range"] { width: 160px; accent-color: var(--gold); }
   -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
 .theme-art.hex { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M28 0 56 16v32L28 64 0 48V16zM28 64v33M0 48v49M56 48v49' fill='none' stroke='%23c9a45f' stroke-opacity='.11' stroke-width='1'/%3E%3C/svg%3E"), radial-gradient(ellipse at 80% 0%, rgb(67 207 193 / .25), transparent 70%), #0a0d13; background-size: 56px 97px, auto, auto; }
 :root[data-realm="ionia"] .theme-art { border-radius: 8px; }
+
+/* ------------------------------------------------------------------ mise à jour */
+.upd-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.upd-actions a.btn { text-decoration: none; }
+.upd-actions .btn[disabled] { opacity: .5; cursor: default; }
+.upd-notes { max-height: 180px; overflow: auto; padding: 10px 12px; white-space: pre-wrap; font-size: 12px; line-height: 1.5;
+  color: var(--text-dim); background: var(--ink-0); border: 1px solid var(--line-soft); }
+.rail-btn.has-update::after { content: ""; position: absolute; top: 8px; right: 14px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--teal); box-shadow: 0 0 0 2px var(--ink-0); }

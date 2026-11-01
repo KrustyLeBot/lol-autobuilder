@@ -200,6 +200,37 @@ function renderSettings() {
       <span class="theme-sw">${t.sw.map((c) => `<i style="background:${c}"></i>`).join("")}</span>
       <span class="theme-name">${t.name}</span><span class="theme-tag">${t.tag}</span></button>`).join("");
   applyTheme(set.theme);
+  renderUpdate();
+}
+
+/** Section « Mise à jour » : version installée, dernière release GitHub, bouton d'installation. */
+function renderUpdate() {
+  const u = state?.update;
+  if (!u) return;
+  const latest = u.latest ? `version ${esc(u.latest)}` : "";
+  const sub = {
+    idle: `Version ${esc(u.current)}`,
+    checking: `Version ${esc(u.current)} · recherche d'une nouvelle version…`,
+    uptodate: `Version ${esc(u.current)} · c'est la dernière`,
+    available: `Version ${esc(u.current)} installée · ${latest} disponible`,
+    downloading: `Téléchargement de la ${latest} et vérification…`,
+    installing: "Installation en cours : lolbuilds va se fermer puis se rouvrir tout seul.",
+    error: `Version ${esc(u.current)} · ${esc(u.error || "vérification impossible")}`,
+  }[u.status] || `Version ${esc(u.current)}`;
+  $("#upd-title").textContent = u.status === "available" ? "Nouvelle version disponible" : "Version installée";
+  $("#upd-sub").innerHTML = sub;
+  const busy = ["checking", "downloading", "installing"].includes(u.status);
+  const page = u.url ? `<a class="btn ghost" href="${esc(u.url)}" target="_blank" rel="noopener">Voir la release</a>` : "";
+  let actions = `<button type="button" class="btn ghost" data-update="check"${busy ? " disabled" : ""}>Vérifier</button>`;
+  if (u.status === "available") {
+    actions = u.installable
+      ? `${page}<button type="button" class="btn" data-update="install">Mettre à jour</button>`
+      : `<a class="btn" href="${esc(u.url)}" target="_blank" rel="noopener">Télécharger la ${latest}</a>`;
+  }
+  $("#upd-actions").innerHTML = actions;
+  const notes = $("#upd-notes");
+  notes.hidden = u.status !== "available" || !u.notes;
+  if (!notes.hidden) notes.textContent = u.notes;
 }
 
 /* ------------------------------------------------------------------ rendu global */
@@ -229,6 +260,9 @@ function renderTop() {
   $("#opt-alert").checked = state.settings.turnAlert;
   for (const k of ["D", "F"]) $(`#flash-${k.toLowerCase()}`).setAttribute("aria-pressed", String(state.settings.flashKey === k));
   $("#rail-foot").innerHTML = `<b>${esc(S?.version?.split(".").slice(0, 2).join(".") || "—")}</b>patch<br><br><b>${day(state.lastPrefetch)}</b>builds`;
+  const upd = state.update?.status === "available";
+  $("#nav-settings").classList.toggle("has-update", upd);
+  $("#nav-settings").title = upd ? `Nouvelle version ${state.update.latest} disponible` : "";
 }
 
 /* ------------------------------------------------------------------ vue champ select */
@@ -606,6 +640,8 @@ $("#view-settings").addEventListener("click", (e) => {
   if (theme) { applyTheme(theme.dataset.theme); post("/api/settings", { theme: theme.dataset.theme }); }
   const flash = e.target.closest("[data-setflash]");
   if (flash) post("/api/settings", { flashKey: flash.dataset.setflash });
+  const upd = e.target.closest("[data-update]");
+  if (upd) post(`/api/update/${upd.dataset.update}`, {});
 });
 $("#lib-search").addEventListener("input", renderLibrary);
 

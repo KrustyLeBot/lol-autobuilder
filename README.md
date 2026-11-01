@@ -53,8 +53,17 @@ Tout se règle dans **Réglages** (icône d'engrenage à gauche) :
 | Alertes | fenêtre au premier plan et son quand c'est ton tour de bannir ou de choisir ; un son au choix pour chaque moment |
 | Touche de Flash | Flash sur D, sur F, ou là où le build le met |
 | Thème | Hextech, Noxus, Piltover ou Ionia |
+| Mise à jour | indique ta version et installe la nouvelle en un clic quand elle sort |
 
 Au moment de l'installation, tu peux aussi cocher **Lancer lolbuilds au démarrage de Windows**.
+
+## Mises à jour
+
+Au démarrage, lolbuilds regarde s'il existe une nouvelle version. Si c'est le cas, une pastille apparaît sur **Réglages** : ouvre la section **Mise à jour** et clique sur **Mettre à jour**. L'installateur est téléchargé, vérifié, puis lolbuilds se ferme et se rouvre tout seul, réglages conservés.
+
+Avec la version portable, le bouton ouvre la page de téléchargement de la nouvelle version.
+
+> Tu as la 0.1.0 ? Elle n'a pas encore ce bouton : installe la dernière version une fois depuis la [page des téléchargements](https://github.com/Miitos/lol-autobuilder/releases/latest), les suivantes arriveront toutes seules.
 
 ## Questions fréquentes
 

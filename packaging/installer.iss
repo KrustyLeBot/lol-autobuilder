@@ -56,6 +56,8 @@ Name: "{userstartup}\lolbuilds"; Filename: "{app}\lolbuilds.exe"; Tasks: startup
 
 [Run]
 Filename: "{app}\lolbuilds.exe"; Description: "{cm:LaunchNow}"; Flags: nowait postinstall skipifsilent
+; Mise à jour depuis l'appli (installateur lancé en silencieux) : on rouvre lolbuilds automatiquement.
+Filename: "{app}\lolbuilds.exe"; Flags: nowait skipifnotsilent
 
 [UninstallDelete]
 ; Les builds en cache et les réglages (%USERPROFILE%\.lolbuilds) sont conservés volontairement.

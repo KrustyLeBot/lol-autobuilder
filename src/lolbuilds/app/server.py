@@ -14,6 +14,8 @@ import asyncio
 import dataclasses
 import json
 import logging
+import os
+import tempfile
 import time
 from datetime import date
 from pathlib import Path
@@ -21,7 +23,7 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 
-from .. import ROLE_LABELS, ROLES
+from .. import ROLE_LABELS, ROLES, __version__, updater
 from ..cache import BuildCache
 from .applier import BuildApplier, DryRunLcu, Lcu, find_build
 from ..config import Config
@@ -141,6 +143,8 @@ class Controller:
             "notice": None,  # message d'état global (ex : téléchargement en cours)
             "counterPicks": None,  # bons picks contre l'adversaire de lane, avant le pick
             "banSuggestions": None,  # pendant la phase de bans : menaces pour mon champion ou tier list
+            # Mise à jour (Réglages) : idle | checking | uptodate | available | downloading | installing | error
+            "update": {"status": "idle", "current": __version__, "installable": updater.installed()},
         }
 
     # ------------------------------------------------------------------ état
@@ -359,6 +363,44 @@ class Controller:
         if self.state["applied"]:
             self.state["applied"]["spells"] = option
         await self.toast("ok", "Sorts d'invocateur mis à jour")
+        return {"ok": True}
+
+    # ------------------------------------------------------------------ mise à jour (releases GitHub)
+
+    async def check_update(self) -> None:
+        upd = self.state["update"]
+        upd.update(status="checking", error=None)
+        await self.broadcast()
+        try:
+            info = await asyncio.to_thread(updater.check)
+        except updater.UpdateError as exc:
+            log.warning("Mise à jour : %s", exc)
+            upd.update(status="error", error=str(exc))
+        else:
+            upd.update(info, status="available" if info["newer"] else "uptodate")
+        await self.broadcast()
+
+    async def install_update(self) -> dict[str, Any]:
+        upd = self.state["update"]
+        if upd.get("status") != "available":
+            return {"ok": False, "error": "Aucune mise à jour à installer"}
+        if not upd.get("installable"):
+            return {"ok": False, "error": "Version portable ou installée depuis les sources : télécharge la release sur GitHub"}
+        upd["status"] = "downloading"
+        await self.broadcast()
+        try:
+            dest = Path(tempfile.gettempdir()) / "lolbuilds-update"
+            setup = await asyncio.to_thread(updater.download_installer, dict(upd), dest)
+            await asyncio.to_thread(updater.launch_installer, setup)
+        except (updater.UpdateError, OSError) as exc:
+            log.error("Mise à jour impossible : %s", exc)
+            upd.update(status="error", error=str(exc))
+            await self.broadcast()
+            return {"ok": False, "error": str(exc)}
+        upd["status"] = "installing"
+        await self.broadcast()
+        # L'installateur remplace les fichiers de l'appli puis la relance : on lui laisse la place.
+        asyncio.get_running_loop().call_later(1.5, os._exit, 0)
         return {"ok": True}
 
     # ------------------------------------------------------------------ OP.GG au moment du pick
@@ -676,6 +718,18 @@ def make_app(ctrl: Controller) -> web.Application:
             ctrl._live_dirty.set()
         return web.json_response({"ok": True})
 
+    @routes.post("/api/update/check")
+    async def update_check(_req: web.Request) -> web.Response:
+        await ctrl.check_update()
+        return web.json_response({"ok": True})
+
+    @routes.post("/api/update/install")
+    async def update_install(_req: web.Request) -> web.Response:
+        result = await ctrl.install_update()
+        if not result["ok"]:
+            await ctrl.toast("warn", result["error"])
+        return web.json_response(result)
+
     @routes.post("/api/spells")
     async def spells(req: web.Request) -> web.Response:
         result = await ctrl.apply_spells(int((await req.json())["option"]))
@@ -711,6 +765,8 @@ async def start_server(ctrl: Controller, host: str, port: int) -> web.AppRunner:
     await web.TCPSite(runner, host, port).start()
     # Visuels des thèmes de région (une seule fois ; sans réseau, les thèmes gardent couleurs et ornements).
     asyncio.create_task(asyncio.to_thread(ensure_realm_assets, ctrl.cfg.cache_dir))
+    if not ctrl.demo:  # une nouvelle version est signalée dans les Réglages dès le démarrage
+        asyncio.create_task(ctrl.check_update())
     if ctrl.demo:
         from .demo import launch_demo
 
