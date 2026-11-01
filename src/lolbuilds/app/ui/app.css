@@ -153,7 +153,8 @@ img { display: block; max-width: 100%; }
 .quick { display: flex; align-items: center; gap: 16px; }
 
 .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text-dim); }
-.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch { position: relative; }  /* la case cachée reste dans sa ligne : sinon, en prenant le focus, elle fait défiler la fenêtre */
+.switch input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .switch-track { width: 30px; height: 16px; border-radius: 999px; background: var(--ink-3); border: 1px solid var(--line); position: relative; transition: background .2s; }
 .switch-thumb { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text-mute); transition: transform .2s var(--ease), background .2s; }
 .switch input:checked + .switch-track { background: color-mix(in srgb, var(--gold) 30%, var(--ink-2)); border-color: var(--gold-deep); }

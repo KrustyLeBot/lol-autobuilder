@@ -930,6 +930,13 @@ $("#view-settings").addEventListener("click", (e) => {
 });
 $("#lib-search").addEventListener("input", renderLibrary);
 
+/* Garde-fou : seule .main défile. Un élément qui prend le focus ou un défilement automatique pourrait sinon décaler
+   la fenêtre entière (barre de titre et rail hors de l'écran), même avec overflow: hidden. */
+for (const el of [document.documentElement, document.body, $(".app")]) {
+  el?.addEventListener("scroll", () => { if (el.scrollTop || el.scrollLeft) el.scrollTo(0, 0); });
+}
+window.addEventListener("scroll", () => { if (window.scrollY || window.scrollX) window.scrollTo(0, 0); });
+
 /** Sommaire des réglages : ne fait défiler que la zone de contenu. `scrollIntoView` ferait aussi défiler la fenêtre
     entière (barre de titre et rail sortaient de l'écran). */
 function settingsJump(id) {
