@@ -134,9 +134,10 @@ def download_portable(info: dict[str, Any], dest: Path, http: httpx.Client | Non
     (échanger des fichiers entre deux disques échoue sous Windows)."""
     path = _download(info.get("portable"), info.get("sums"), dest, "exe portable", http, name="lolbuilds-update.exe.download")
     with path.open("rb") as f:
-        if f.read(2) != b"MZ":
-            path.unlink(missing_ok=True)
-            raise UpdateError("le fichier téléchargé n'est pas un exécutable Windows")
+        is_exe = f.read(2) == b"MZ"
+    if not is_exe:  # supprimé une fois fermé : Windows refuse de supprimer un fichier ouvert
+        path.unlink(missing_ok=True)
+        raise UpdateError("le fichier téléchargé n'est pas un exécutable Windows")
     return path
 
 
