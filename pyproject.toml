@@ -27,7 +27,7 @@ lolbuilds-app = "lolbuilds.app.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"lolbuilds.app" = ["ui/*", "ui/fonts/*"]
+"lolbuilds.app" = ["ui/*", "ui/fonts/*", "ui/audio/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
