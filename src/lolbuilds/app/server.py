@@ -45,7 +45,8 @@ LIVE_DEBOUNCE = 0.6  # s : le client envoie les sessions en rafale
 COUNTER_MIN_GAMES = 300  # parties minimum dans le duel pour proposer un pick
 COUNTER_MAX = 8
 MAIN_MASTERY_RANK = 15
-ARAM_MAP = 12  # Abîme hurlant  # « tes champions » : les 15 meilleures maîtrises
+ARAM_MAP = 12  # Abîme hurlant
+RIFT_MAP = 11  # Faille de l'invocateur  # « tes champions » : les 15 meilleures maîtrises
 BAN_MAX = 6
 
 
@@ -58,6 +59,7 @@ DISCO_DEFAULTS = {"enabled": False, "pool": "lane", "build": "random", "spells":
 DISCO_CHOICES = {"pool": ("lane", "any"), "build": ("top", "random"), "spells": ("build", "chaos"),
                  "lights": ("soft", "disco", "strobe")}
 # Sorts de la faille tirés en « Chaos total » (Purge, Fatigue, Flash, Fantôme, Soins, Châtiment, TP, Embrasement, Barrière).
+DISCO_GUARD = 1.5  # s avant la fin du minuteur : verrouillage de secours du champion tiré
 RIFT_SPELLS = (1, 3, 4, 6, 7, 11, 12, 14, 21)
 MUSIC_TYPES = {".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".aac": "audio/aac", ".flac": "audio/flac"}
 
@@ -134,7 +136,8 @@ def select_counter_picks(counters: list[dict[str, Any]], unavailable: set[int], 
 IDLE_PHASES = ("None", "Lobby", "Matchmaking", "ReadyCheck")
 # Partie lancée (écran de chargement compris) : les joueurs arrivent dès que l'API du jeu répond.
 GAME_PHASES = ("GameStart", "InProgress", "Reconnect")
-TEAM_WAIT = 20  # s : au-delà, les joueurs s'affichent même si quelques profils OP.GG manquent
+TEAM_WAIT = 20
+MATCHUP_RETRY = 30  # s avant de redemander un matchup resté sans réponse  # s : au-delà, les joueurs s'affichent même si quelques profils OP.GG manquent
 
 
 class Controller:
@@ -151,6 +154,8 @@ class Controller:
         self.build: Build | None = None  # build affiché : global + propositions contre l'adversaire
         self._base: Build | None = None  # build global du champion/rôle
         self._matchup: tuple[tuple[str, str, str], list[dict[str, Any]]] | None = None
+        self._matchup_failed: tuple[tuple[str, str, str], float] | None = None
+        self._extra_len, self._extra_shown = 0, []  # propositions contre l'adversaire affichées en tête
         self._atypical: tuple[str, dict[str, Any]] | None = None  # (champion, proposition « Atypique » issue de l'ARAM)
         self._opponent_override: int | None = None  # adversaire choisi à la main dans l'UI
         self._manual = False  # l'utilisateur a choisi un build : plus d'application automatique
@@ -163,6 +168,9 @@ class Controller:
         self._live_roles: dict[str, list[str]] = {}
         self._preview: int | None = None  # champion proposé cliqué avant le pick (aperçu)
         self._disco: int | None = None  # champion tiré par le Disco pick (affiché pendant mon tour)
+        self._disco_done: tuple[int, int] | None = None  # (champion, proposition) une fois verrouillé
+        self._disco_guard: asyncio.Task[None] | None = None
+        self._disco_locking = False
         self.on_focus: Any = None  # ramène la fenêtre de bureau devant (posé par main.py)
         self._pool: tuple[set[int] | None, dict[int, int]] | None = None  # (possédés, maîtrises) du joueur
         self._counters: tuple[tuple[str, str], list[dict[str, Any]]] | None = None
@@ -272,6 +280,8 @@ class Controller:
             # Action en cours du joueur local (l'UI alerte quand l'id change) ; ban encore à faire ?
             "turn": {"id": current.get("id"), "type": current["type"]} if current else None,
             "banPending": any(a["type"] == "ban" and not a.get("completed") for a in mine),
+            # Pendant mon tour, championId suit le survol : seul un pick terminé veut dire « verrouillé ».
+            "pickPending": any(a["type"] == "pick" and not a.get("completed") for a in mine),
             "stage": stage,
             "timer": {"phase": timer.get("phase", ""), "endsAt": time.time() * 1000 + left if left else None,
                       "total": timer.get("totalTimeInPhase") or None},  # ms, pour la barre de progression
@@ -282,7 +292,8 @@ class Controller:
 
         Le banc seul ne suffit pas : l'ARURF l'active aussi, sur la Faille."""
         if self._map_id is not None:
-            return "aram" if self._map_id == ARAM_MAP else "classic"
+            # Arena, Essaim… : ni lanes ni builds de la Faille, on affiche sans rien appliquer.
+            return "aram" if self._map_id == ARAM_MAP else "classic" if self._map_id == RIFT_MAP else "other"
         return "aram" if s.get("benchEnabled") else "classic"
 
     async def _load_map(self) -> None:
@@ -326,20 +337,28 @@ class Controller:
         self.state["champSelect"] = summary
         me = next((a for a in summary["allies"] if a["isMe"]), None)
         champion_id = (me or {}).get("championId") or 0
-        if champion_id:
+        locked = bool(champion_id) and not summary["pickPending"]
+        if locked:
             self._preview = None
             self._disco = None
-        shown_id = champion_id or self._disco or (me or {}).get("intent") or self._preview or 0
+        elif champion_id:
+            self._preview = None  # survol dans le client : il remplace l'aperçu
+        # Pendant la roulette du Disco pick, le champion tiré reste affiché même si le client survole autre chose.
+        shown_id = (champion_id if locked else 0) or self._disco or champion_id or (me or {}).get("intent") or self._preview or 0
         position = (me or {}).get("position", "")
         current = self.state["current"]
+        if current and current.get("assigned") != position:
+            self._opponent_override = None  # échange de poste : l'adversaire choisi à la main n'est plus le bon
         if shown_id and (not current or current["championId"] != shown_id or current.get("assigned") != position
-                         or current.get("mode") != ("aram" if self._aram_mode() else "classic")):
+                         or current.get("mode") != self._build_mode()):
+            if not current or current["championId"] != shown_id:
+                self._manual = False  # autre champion (échange, nouveau survol) : son build s'applique à nouveau
             self.load_build(shown_id, position)
         elif not shown_id:
             self.state["current"] = None
             self.build = None
         if self.state["current"]:
-            self.state["current"]["locked"] = bool(champion_id)
+            self.state["current"]["locked"] = locked
             self.state["current"]["preview"] = bool(self._preview) and shown_id == self._preview
         await self.broadcast()
         if self.live:
@@ -385,6 +404,13 @@ class Controller:
             "locked": False, "fetching": False, "opponent": None, "build": build.to_dict() if build else None,
         }
 
+    def _build_mode(self) -> str:
+        return "aram" if self._aram_mode() else "classic"
+
+    def _other_mode(self) -> bool:
+        """Carte sans lanes ni builds de la Faille (Arena…) : builds affichés, jamais appliqués tout seuls."""
+        return (self.state["champSelect"] or {}).get("mode") == "other"
+
     def _aram_mode(self) -> bool:
         """Champ select d'ARAM (et option `aram` active) : les builds viennent des stats d'ARAM."""
         return bool(self.cfg.opgg.aram and (self.state["champSelect"] or {}).get("mode") == "aram")
@@ -420,6 +446,13 @@ class Controller:
             # L'« Atypique » vient en dernier : jamais proposé par défaut, ni compté dans les préférences mémorisées.
             build = dataclasses.replace(base, variants=[*extra, *(base.variants or [_flat_variant(base)]), *([atypical] if atypical else [])],
                                         spell_options=[*options, *base.spell_options])
+        applied = self.state["applied"]
+        if applied and applied.get("variant", -1) >= 0 and base:
+            if applied["variant"] >= self._extra_len:  # build global : même proposition, nouvel indice
+                applied["variant"] += len(extra) - self._extra_len
+            elif extra[:self._extra_len] != self._extra_shown:  # proposition contre l'adversaire remplacée
+                applied["variant"] = -1
+        self._extra_len, self._extra_shown = len(extra), list(extra)
         self.build = build
         if cur is not None:
             cur["build"] = build.to_dict() if build else None
@@ -439,7 +472,7 @@ class Controller:
     def _maybe_auto_apply(self) -> None:
         cur = self.state["current"]
         if (cur and cur.get("locked") and self.state["champSelect"] and self.build and self.prefs.data["autoApply"]
-                and not self._manual
+                and not self._manual and not self._other_mode()
                 and self._applied_for != self._apply_key()):
             self._schedule_apply(cur["championId"])
 
@@ -495,10 +528,10 @@ class Controller:
             finally:
                 self._applying = False
                 self.state["busy"] = False
-        self._applied_for = key
         if self.state["champSelect"] is None and session is not None:
             await self.broadcast()
             return {"ok": False, "error": "La sélection des champions est terminée"}
+        self._applied_for = key
         self.state["applied"] = {"variant": variant, "spells": spells_option, "steps": steps, "auto": auto, "at": time.time(),
                                  "problems": applier.problems}
         if self._applied_for != self._apply_key():
@@ -594,7 +627,10 @@ class Controller:
         return {b.champion for b in self.cache.all_builds() if b.role == role}
 
     async def disco_roll(self) -> dict[str, Any]:
-        """Tire un champion au hasard (possédé, libre, de ma lane), le survole dans le client et charge son build."""
+        """Tire un champion au hasard (possédé, libre, de ma lane) et charge son build.
+
+        Rien n'est envoyé au client avant la fin de la roulette (le survol dévoilait le champion dans League) ;
+        un verrouillage de secours part juste avant la fin du minuteur si la page ne l'a pas demandé."""
         if not self.prefs.data["disco"]["enabled"]:
             return {"ok": False, "error": "Le Disco pick est désactivé (Réglages)"}
         if (self.state["champSelect"] or {}).get("mode") == "aram":
@@ -619,22 +655,47 @@ class Controller:
         if champion_id not in reel:
             reel[-1] = champion_id
         name = self.champions.by_key.get(champion_id, str(champion_id))
-        path = f"/lol-champ-select/v1/session/actions/{action['id']}"
-        status, data = await self.lcu.request("PATCH", path, {"championId": champion_id})  # survol seulement
-        log.info("Disco pick : %s tiré parmi %d (%s) ; survol -> %s %s", name, len(candidates), role or "tous rôles", status, data or "")
+        log.info("Disco pick : %s tiré parmi %d (%s)", name, len(candidates), role or "tous rôles")
         self._disco = champion_id
+        self._disco_done = None
         self.load_build(champion_id, role)
         await self.broadcast()
         if self.live:
             self._live_dirty.set()
-        return {"ok": True, "championId": champion_id, "reel": reel, "count": len(candidates), "role": role}
+        ends = (cs.get("timer") or {}).get("endsAt")
+        left = (ends / 1000 - time.time()) if ends else None
+        if self._disco_guard and not self._disco_guard.done():
+            self._disco_guard.cancel()
+        if left is not None:
+            self._disco_guard = asyncio.create_task(self._disco_deadline(champion_id, action["id"], left - DISCO_GUARD))
+        return {"ok": True, "championId": champion_id, "reel": reel, "count": len(candidates), "role": role,
+                "timeLeft": round(left * 1000) if left is not None else None}
+
+    async def _disco_deadline(self, champion_id: int, action_id: Any, delay: float) -> None:
+        """Filet de sécurité : page fermée ou trop lente, le champion tiré est verrouillé avant la fin du minuteur
+        (sans survol, le client n'aurait rien à verrouiller)."""
+        await asyncio.sleep(max(0.0, delay))
+        turn = self._pick_turn()
+        if self._disco == champion_id and not self._disco_done and turn and turn[1]["id"] == action_id:
+            log.info("Disco pick : verrouillage de secours avant la fin du minuteur")
+            build = self.prefs.data["disco"]["build"]
+            await self.disco_lock(champion_id, -1 if build == "random" else 0, None)
 
     async def disco_lock(self, champion_id: int, variant: int, spells: list[int] | None) -> dict[str, Any]:
         """Verrouille le champion tiré puis envoie son build (et les sorts tirés au sort, en « Chaos total »).
 
         `variant` -1 : une des propositions OP.GG au hasard (jamais l'« Atypique »), tirée une fois le build arrivé."""
-        turn = self._pick_turn()
         name = self.champions.by_key.get(champion_id, str(champion_id))
+        if self._disco_done and self._disco_done[0] == champion_id:  # déjà verrouillé (secours ou double appel)
+            return {"ok": True, "variant": self._disco_done[1]}
+        if self._disco_locking:
+            for _ in range(100):  # l'autre verrouillage (secours ou page) est en cours : on attend son résultat
+                await asyncio.sleep(0.1)
+                if not self._disco_locking:
+                    break
+            if self._disco_done and self._disco_done[0] == champion_id:
+                return {"ok": True, "variant": self._disco_done[1]}
+        turn = self._pick_turn()
         if not turn:
             return {"ok": False, "error": "Ce n'est plus ton tour de choisir"}
         cs, action, _ = turn
@@ -642,6 +703,14 @@ class Controller:
             return {"ok": False, "error": f"{name} n'est plus disponible"}
         if spells is not None and (len(spells) != 2 or len(set(spells)) != 2 or not set(spells) <= set(RIFT_SPELLS)):
             spells = None
+        self._disco_locking = True
+        try:
+            return await self._disco_lock(champion_id, name, action, variant, spells)
+        finally:
+            self._disco_locking = False
+
+    async def _disco_lock(self, champion_id: int, name: str, action: dict[str, Any], variant: int,
+                          spells: list[int] | None) -> dict[str, Any]:
         path = f"/lol-champ-select/v1/session/actions/{action['id']}"
         self._cancel_auto_apply()
         self._manual = True  # le build tiré ne doit pas être remplacé par l'application automatique
@@ -654,6 +723,9 @@ class Controller:
             log.info("Disco pick : sélection puis verrouillage de %s -> %s %s", name, status, data or "")
             if status not in (200, 204):
                 return {"ok": False, "error": f"Le client a refusé de verrouiller {name} ({status})"}
+        if self._disco_guard and not self._disco_guard.done() and self._disco_guard is not asyncio.current_task():
+            self._disco_guard.cancel()
+        self._disco_done = (champion_id, max(variant, 0))
         for i in range(40):  # le build OP.GG peut encore être en route (s'il n'arrive pas, on n'attend pas 8 s)
             cur = self.state["current"]
             if cur and cur["championId"] == champion_id and not cur.get("fetching") and (self.build or i >= 10):
@@ -665,6 +737,7 @@ class Controller:
                 choices = [i for i, v in enumerate(self.build.variants or [None])
                            if not any(str(t).startswith("Atypique") for t in (v or {}).get("tags", []))]
                 variant = random.choice(choices or [0])
+            self._disco_done = (champion_id, variant)
             await self.apply(variant, spells=spells, remember=False)
         await self.toast("ok", f"Disco pick : {name} verrouillé")
         return {"ok": True, "variant": max(variant, 0)}
@@ -947,6 +1020,9 @@ class Controller:
             await self.broadcast()
             self._counters = ((enemy, role), await asyncio.to_thread(self.live.counters, enemy, role))
         owned, mastery = await self._load_pool()
+        if self.state["champSelect"] is None:  # champ select terminé pendant la requête
+            self.state["counterPicks"] = None
+            return
         taken = {a["championId"] or a["intent"] for a in cs["allies"] if not a["isMe"]}
         taken |= {e["championId"] for e in cs["enemies"]} | {b["championId"] for b in cs["bans"]}
         picks = select_counter_picks(self._counters[1], taken - {0}, owned, mastery)
@@ -972,6 +1048,9 @@ class Controller:
         else:
             info = {"mode": "meta", "championId": None, "role": role}
             ranked = await asyncio.to_thread(self.live.tier_list, role)
+        if self.state["champSelect"] is None:  # champ select terminé pendant la requête
+            self.state["banSuggestions"] = None
+            return
         picks = [c for c in ranked if c["championId"] not in taken][:BAN_MAX]
         self.state["banSuggestions"] = {**info, "status": "ok" if picks else "empty", "picks": picks}
 
@@ -1053,7 +1132,7 @@ class Controller:
 
         # 3) propositions contre l'adversaire de lane
         cs = self.state["champSelect"]
-        if self.cfg.opgg.matchup and cs:
+        if self.cfg.opgg.matchup and cs and not self._other_mode():
             try:
                 opponent, guessed = await self._lane_opponent(role)
             except Exception as exc:
@@ -1068,8 +1147,11 @@ class Controller:
                     self._compose()
             else:
                 key = (champ, role, opponent)
+                known = self._matchup and self._matchup[0] == key
+                failed = self._matchup_failed and self._matchup_failed[0] == key \
+                    and time.monotonic() - self._matchup_failed[1] < MATCHUP_RETRY
                 cur["opponent"] = {"championId": self.champions.key_of(opponent), "guessed": guessed,
-                                   "status": "ok" if self._matchup and self._matchup[0] == key else "loading"}
+                                   "status": "ok" if known else "empty" if failed else "loading"}
                 if cur["opponent"]["status"] == "loading":
                     await self.broadcast()
                     try:
@@ -1079,8 +1161,14 @@ class Controller:
                         variants = []
                     if not still(role):
                         return
-                    self._matchup = (key, variants)
-                    cur["opponent"]["status"] = "ok" if variants else "empty"
+                    if variants:
+                        self._matchup, self._matchup_failed = (key, variants), None
+                        cur["opponent"]["status"] = "ok"
+                    else:  # OP.GG muet ou en panne : nouvel essai dans MATCHUP_RETRY s
+                        self._matchup_failed = (key, time.monotonic())
+                        cur["opponent"]["status"] = "empty"
+                        if self._matchup and self._matchup[0][:2] == key[:2]:
+                            self._matchup = None
                     self._compose()
         await self.broadcast()
         self._maybe_auto_apply()
@@ -1250,9 +1338,12 @@ def make_app(ctrl: Controller) -> web.Application:
         cs = ctrl.state["champSelect"]
         me = next((a for a in (cs or {}).get("allies", []) if a["isMe"]), None)
         position = me["position"] if me and (me["championId"] or me["intent"]) == champion_id else ""
-        ctrl.load_build(champion_id, position, body.get("role"))
+        role = body.get("role")
+        ctrl.load_build(champion_id, position, role)
         if me and (me["championId"] or 0) == champion_id:
-            ctrl.state["current"]["locked"] = True
+            ctrl.state["current"]["locked"] = not cs["pickPending"]
+            if role and role != position:
+                ctrl._manual = True  # on consulte un autre rôle : il ne doit pas remplacer le build appliqué
         await ctrl.broadcast()
         return web.json_response({"ok": True})
 

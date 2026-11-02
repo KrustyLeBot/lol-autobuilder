@@ -8,7 +8,8 @@ const DISCO_SPELLS = [1, 3, 4, 6, 7, 11, 12, 14, 21];  // sorts de la faille tir
 const DISCO_BPM = 155;
 const DISCO_SPIN_MS = 15000;  // la roulette tourne 15 s…
 const DISCO_SPEED = 1500;  // px/s pendant la pleine vitesse (≈ 14 vignettes par seconde, au rythme de l'eurobeat)
-const DISCO_MARGIN_MS = 2500;  // …sauf s'il ne reste plus le temps de verrouiller après (réponse du client)
+const DISCO_MARGIN_MS = 1800;  // …sauf s'il ne reste plus le temps de verrouiller après (réponse du client)
+const DISCO_RUSH_MS = 5000;  // moins de temps que ça avant la fin du tour : roulette courte et deux fois plus rapide
 const DISCO_VU_COLS = 64;
 
 let disco = null;  // partie en cours : { id, reel, roll, timers, music, raf, ... }
@@ -112,9 +113,11 @@ async function discoStart() {
   // Échec : le serveur a déjà poussé un toast d'erreur (ou post() en a affiché un) : pas de second message ici.
   if (!r.ok) { if (disco?.busy) disco = null; return; }
   if (!disco) return;  // annulé (fin du champ select) pendant la requête
-  const left = state.champSelect?.timer?.endsAt ? state.champSelect.timer.endsAt - Date.now() : 30000;
-  Object.assign(disco, { id: r.championId, reel: r.reel, count: r.count, role: r.role, busy: false,
-                         duration: Math.max(1500, Math.min(DISCO_SPIN_MS, left - DISCO_MARGIN_MS)) });
+  // Temps restant mesuré par le serveur au tirage ; le champion n'est envoyé au client qu'à l'arrêt de la roulette.
+  const left = r.timeLeft ?? (state.champSelect?.timer?.endsAt ? state.champSelect.timer.endsAt - Date.now() : 30000);
+  const rush = left - DISCO_MARGIN_MS < DISCO_RUSH_MS;
+  Object.assign(disco, { id: r.championId, reel: r.reel, count: r.count, role: r.role, busy: false, rush,
+                         duration: Math.max(700, Math.min(DISCO_SPIN_MS, left - DISCO_MARGIN_MS)) });
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   el.className = `disco lights-${reduced ? "soft" : set.lights}`;
   el.querySelector(".dz-tag").textContent = `DISCO PICK · ${r.role ? (ROLE_LABEL[r.role] || r.role).toUpperCase() : "TOUS RÔLES"}`;
@@ -127,7 +130,7 @@ async function discoStart() {
 
 function discoRollView() {
   $("#disco .dz-stage").innerHTML = `<div class="dz-roll">
-    <div class="dz-title-row"><span class="dz-chev">${"<i>›</i>".repeat(6)}</span><h1 class="dz-title">PLEIN GAZ !</h1><span class="dz-chev pink">${"<i>›</i>".repeat(6)}</span></div>
+    <div class="dz-title-row"><span class="dz-chev">${"<i>›</i>".repeat(6)}</span><h1 class="dz-title">${disco.rush ? "TURBO BOOST !" : "PLEIN GAZ !"}</h1><span class="dz-chev pink">${"<i>›</i>".repeat(6)}</span></div>
     <div class="dz-reel"><div class="dz-track"></div><div class="dz-frame"></div><span class="dz-pin"></span></div>
     <p class="dz-sub">${int(disco.count)} CHAMPIONS ${disco.role ? (ROLE_LABEL[disco.role] || "").toUpperCase() : ""} · AUCUN FREIN</p>
     <div class="dz-actions"><button type="button" class="dz-btn lime" data-discoact="nitro">NITRO ›› ARRÊT IMMÉDIAT</button></div></div>`;
@@ -141,10 +144,11 @@ function discoSpin() {
   if (!track || !reel) return;
   const step = 110;  // largeur d'une vignette + écart (voir .dz-track img)
   const total = disco.duration / 1000;
-  const brake = Math.min(4.5, total * 0.45);  // s de freinage à la fin
+  const brake = Math.min(4.5, total * (disco.rush ? 0.3 : 0.45));  // s de freinage à la fin
   const cruise = total - brake;
   const offset = 14 + 48 - reel.clientWidth / 2;  // centre de la vignette sous le cadre
-  const wanted = DISCO_SPEED * (cruise + brake / 2);  // distance parcourue à la vitesse visée
+  const speed = DISCO_SPEED * (disco.rush ? 2 : 1);  // fin de tour proche : ça défile deux fois plus vite
+  const wanted = speed * (cruise + brake / 2);  // distance parcourue à la vitesse visée
   const n = disco.reel.length;
   let target = Math.max(0, Math.ceil((wanted - offset) / step));
   while (disco.reel[target % n] !== disco.id) target++;

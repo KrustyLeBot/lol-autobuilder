@@ -705,15 +705,16 @@ def test_disco_pick_is_off_by_default(ctrl):
     assert not asyncio.run(ctrl.disco_roll())["ok"]
 
 
-def test_disco_roll_hovers_a_free_champion(ctrl):
+def test_disco_roll_draws_a_free_champion_without_hovering(ctrl):
     ctrl.prefs.update({"disco": {"enabled": True}})
     asyncio.run(ctrl.on_session(pick_phase()))
     ctrl.lcu.calls.clear()
     r = asyncio.run(ctrl.disco_roll())
     assert r["ok"] and r["championId"] in (103, 80)  # ni Thresh (allié) ni Syndra (ennemie)
     assert r["championId"] in r["reel"] and not {412, 134} & set(r["reel"])
-    assert ("PATCH", "/lol-champ-select/v1/session/actions/21", {"championId": r["championId"]}) in ctrl.lcu.calls
-    assert ctrl.state["current"]["championId"] == r["championId"]  # son build s'affiche pendant la roulette
+    assert not any(m == "PATCH" for m, *_ in ctrl.lcu.calls)  # rien dans le client avant la fin de la roulette
+    assert ctrl.state["current"]["championId"] == r["championId"]  # son build se prépare pendant la roulette
+    assert 25000 < r["timeLeft"] <= 30000  # la roulette s'adapte au temps restant
 
 
 def test_disco_roll_refused_outside_my_pick(ctrl):
@@ -945,3 +946,89 @@ def test_bad_requests_get_a_400(ctrl):
             return r.status
 
     assert asyncio.run(scenario()) == 400
+
+
+# --------------------------------------------------------------------------- Disco pick : verrouillage
+
+def test_disco_safety_lock_before_the_timer_ends(ctrl, monkeypatch):
+    """Page fermée pendant la roulette : le champion tiré est verrouillé juste avant la fin du minuteur."""
+    monkeypatch.setattr(server, "DISCO_GUARD", 29.9)  # minuteur de 30 s : le secours part tout de suite
+    ctrl.prefs.update({"disco": {"enabled": True}})
+
+    async def scenario():
+        await ctrl.on_session(pick_phase())
+        r = await ctrl.disco_roll()
+        await ctrl._disco_guard
+        again = await ctrl.disco_lock(r["championId"], 0, None)  # la page arrive après : déjà fait
+        return r, again
+
+    r, again = asyncio.run(scenario())
+    locks = [c for c in ctrl.lcu.calls if c[0] == "PATCH" and c[1].endswith("/actions/21")]
+    assert locks == [("PATCH", "/lol-champ-select/v1/session/actions/21", {"championId": r["championId"], "completed": True})]
+    assert again["ok"]
+
+
+# --------------------------------------------------------------------------- partie normale : cas limites
+
+def my_pick(champion_id, completed):
+    s = ahri_vs([134])
+    s["myTeam"][1]["championId"] = champion_id
+    s["actions"] = [[{"id": 21, "actorCellId": 2, "type": "pick", "championId": champion_id, "completed": completed,
+                      "isInProgress": not completed}]]
+    s["timer"] = {"phase": "BAN_PICK", "adjustedTimeLeftInPhase": 30000}
+    return s
+
+
+def test_hover_during_my_turn_is_not_a_lock(ctrl):
+    run(ctrl, my_pick(103, completed=False))
+    assert ctrl.state["current"]["locked"] is False and ctrl.state["applied"] is None
+    run(ctrl, my_pick(103, completed=True))
+    assert ctrl.state["current"]["locked"] is True and ctrl.state["applied"] is not None
+
+
+def test_champion_trade_applies_the_new_champion(ctrl):
+    run(ctrl, ahri_vs([134]))
+    asyncio.run(ctrl.apply(1))  # choix manuel sur Ahri
+    traded = ahri_vs([134])
+    traded["myTeam"][1]["championId"] = 80  # échange avec un allié : Pantheon
+    ctrl.lcu.calls.clear()
+    run(ctrl, traded)
+    assert ctrl.state["current"]["championId"] == 80
+    assert any(p == "/lol-perks/v1/pages" and m == "POST" for m, p, _ in ctrl.lcu.calls)
+
+
+def test_browsing_another_role_never_replaces_the_applied_build(ctrl):
+    from aiohttp.test_utils import TestClient, TestServer
+
+    run(ctrl, ahri_vs([134]))
+    ctrl.lcu.calls.clear()
+
+    async def scenario():
+        async with TestClient(TestServer(server.make_app(ctrl))) as client:
+            await client.post("/api/open", json={"championId": 103, "role": "top"})
+        await ctrl.on_session(ahri_vs([134]))
+        await ctrl._live_refresh()
+        if ctrl._apply_task:
+            await asyncio.gather(ctrl._apply_task, return_exceptions=True)
+
+    asyncio.run(scenario())
+    assert not any(m in ("POST", "PUT") for m, *_ in ctrl.lcu.calls)
+
+
+def test_failed_matchup_is_retried_later(ctrl, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ctrl.live, "matchup", lambda *a: calls.append(a) or [])
+    run(ctrl, ahri_vs([134]))
+    asyncio.run(ctrl._live_refresh())
+    assert len(calls) == 1 and ctrl.state["current"]["opponent"]["status"] == "empty"
+    monkeypatch.setattr(server, "MATCHUP_RETRY", 0)
+    asyncio.run(ctrl._live_refresh())
+    assert len(calls) == 2
+
+
+def test_arena_is_shown_but_never_applied(ctrl):
+    ctrl._map_id = 30
+    s = session(103, position="")
+    run(ctrl, s)
+    assert ctrl.state["champSelect"]["mode"] == "other"
+    assert ctrl.state["applied"] is None and not any(m == "POST" for m, *_ in ctrl.lcu.calls)
