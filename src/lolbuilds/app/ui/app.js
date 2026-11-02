@@ -73,6 +73,8 @@ function connect() {
     if (msg.type === "state") {
       const prevPrefetch = state?.lastPrefetch;
       state = msg.state;
+      // Premier état reçu : le toast déjà présent date d'avant le chargement, on ne le rejoue pas.
+      if (lastToast === null) lastToast = state.toast?.id ?? false;
       if (state.notice === "reload") { loadStatic().then(() => { lastHtml = ""; render(); loadLibrary(); }); return; }
       render();
       checkTurn();
@@ -81,7 +83,7 @@ function connect() {
   };
   ws.onclose = () => {
     state = state ? { ...state, connection: "offline" } : null;
-    renderTop();
+    render();  // reflète l'état hors ligne (écran « serveur arrêté »)
     setTimeout(connect, 1500);
   };
 }
@@ -186,6 +188,14 @@ function applyTheme(theme) {
 }
 try { applyTheme(localStorage.getItem("lolbuilds-theme")); } catch { applyTheme("hextech"); }
 
+/** Réécrit innerHTML seulement si le HTML change : sinon le focus et le survol sautent à chaque push. */
+const htmlCache = new WeakMap();
+function setHtml(el, html) {
+  if (htmlCache.get(el) === html) return;
+  htmlCache.set(el, html);
+  el.innerHTML = html;
+}
+
 function renderSettings() {
   const set = state?.settings;
   if (!set) return;
@@ -205,12 +215,12 @@ function renderSettings() {
         <button type="button" class="btn ghost" data-testsound="${ev}" aria-label="Écouter">▶</button></span></div>`).join("");
   }
   box.querySelectorAll("select[data-sound]").forEach((sel) => { if (!keep(sel)) sel.value = set.sounds?.[sel.dataset.sound] || "none"; });
-  $("#set-themes").innerHTML = THEMES.map((t) => `
+  setHtml($("#set-themes"), THEMES.map((t) => `
     <button type="button" class="theme-card${set.theme === t.id ? " selected" : ""}" data-theme="${t.id}" aria-pressed="${set.theme === t.id}">
       <span class="theme-art${t.id === "hextech" ? " hex" : ""}" ${t.id === "hextech" ? "" : `style="background-image:url('/assets/realms/${t.id}/bg.jpg')"`}>
         ${t.id === "hextech" ? "" : `<i style="--m:url('/assets/realms/${t.id}/crest.png'); --c:${t.sw[2]}"></i>`}</span>
       <span class="theme-sw">${t.sw.map((c) => `<i style="background:${c}"></i>`).join("")}</span>
-      <span class="theme-name">${t.name}</span><span class="theme-tag">${t.tag}</span></button>`).join("");
+      <span class="theme-name">${t.name}</span><span class="theme-tag">${t.tag}</span></button>`).join(""));
   applyTheme(set.theme);
   renderUpdate();
   renderBuilds();
@@ -233,7 +243,7 @@ function renderBuilds() {
   }[p.status] || "";
   $("#bld-title").textContent = running ? "Téléchargement en cours" : "Builds en cache";
   $("#bld-sub").innerHTML = `${sub}${last && p.status !== "idle" && !running ? ` · dernière récupération : ${day(last)}` : ""}`;
-  $("#bld-actions").innerHTML = `<button type="button" class="btn" data-prefetch${running ? " disabled" : ""}>Tout télécharger</button>`;
+  setHtml($("#bld-actions"), `<button type="button" class="btn" data-prefetch${running ? " disabled" : ""}>Tout télécharger</button>`);
 }
 
 function renderUpdate() {
@@ -257,9 +267,9 @@ function renderUpdate() {
   if (u.status === "available") {
     actions = u.installable
       ? `${page}<button type="button" class="btn" data-update="install">Mettre à jour</button>`
-      : `<a class="btn" href="${esc(u.url)}" target="_blank" rel="noopener">Télécharger la ${latest}</a>`;
+      : u.url ? `<a class="btn" href="${esc(u.url)}" target="_blank" rel="noopener">Télécharger la ${latest}</a>` : actions;  // sans URL : pas de lien vide
   }
-  $("#upd-actions").innerHTML = actions;
+  setHtml($("#upd-actions"), actions);
   const notes = $("#upd-notes");
   notes.hidden = u.status !== "available" || !u.notes;
   if (!notes.hidden) notes.textContent = u.notes;
@@ -308,7 +318,7 @@ function renderLive() {
   const team = state.team;
   let html;
   timerEnds = cs?.timer?.endsAt || null;
-  if (!cur && !cs && !team) {
+  if (state.connection === "offline" || (!cur && !cs && !team)) {
     html = emptyHtml(state.connection);
   } else {
     const b = cur?.build;
@@ -321,14 +331,14 @@ function renderLive() {
     let side, main;
     if (!cs && team) {
       // En jeu : le build ne change plus, il passe en résumé à gauche ; à droite, les 10 joueurs face à face.
-      const v = variants[state.applied?.variant ?? sel];
-      side = b ? gameBuildHtml(b, v) : noBuild;
+      const v = variants[state.applied?.variant] ?? variants[sel];
+      side = b ? (v ? gameBuildHtml(b, v) : "") : noBuild;
       main = lanesHtml(team);
     } else {
-      side = !cur ? sideHintHtml(cs) : b ? variantListHtml(variants, sel, cs, enter) : noBuild;
+      side = !cur ? sideHintHtml(cs) : b ? (variants.length ? variantListHtml(variants, sel, cs, enter) : "") : noBuild;
       main = (cs ? draftHtml(cs, cur, appliedStepsHtml(cur)) + banHtml(state.banSuggestions) : "")
         + (cs && !cur?.locked ? counterHtml(state.counterPicks, cur) : "")
-        + (cur && b ? detailHtml(b, variants[sel], cs) : "")
+        + (cur && b && variants[sel] ? detailHtml(b, variants[sel], cs) : "")
         + (cur && !b ? noBuildHtml(cur) : "");
     }
     html = stageHtml(cs, team) + `<div class="live"><aside class="live-side">${portraitHtml(cur, cs)}${cs ? discoButtonHtml() : ""}${side}</aside>
@@ -411,7 +421,9 @@ function stageHtml(cs, team) {
     step = 4; text = team ? "Partie en cours" : "Partie terminée"; cls = "game";
   } else if (cs.turn) {
     step = cs.turn.type === "ban" ? 1 : 2;
-    text = cs.turn.type === "ban" ? "À toi de bannir" : "À toi de choisir ton champion"; cls = cs.turn.type;
+    text = cs.turn.type === "ban" ? "À toi de bannir"
+      : cs.mode === "aram" ? "ARAM · échange ton champion avec le banc si tu veux" : "À toi de choisir ton champion";
+    cls = cs.turn.type;
   } else {
     const picked = [...cs.allies, ...cs.enemies].some((p) => p.championId);
     step = { planning: 0, ban: 1, pick: 2, finalization: 3 }[cs.stage] ?? (picked ? 2 : 1);
@@ -631,6 +643,7 @@ function counterHtml(cp, cur) {
 }
 
 function matchupHtml(cs, opp) {
+  if (cs.mode === "aram") return "";  // pas d'adversaire de lane en ARAM
   const anyEnemy = cs.enemies.some((e) => e.championId);
   if (!opp) {
     return `<div class="matchup"><span class="dim">${anyEnemy ? "Adversaire de lane non détecté : clique sur un ennemi pour voir les builds contre lui." : "Les builds contre ton adversaire de lane apparaîtront dès qu'il sera choisi."}</span></div>`;
@@ -655,7 +668,8 @@ function noBuildHtml(cur) {
 }
 
 function variantsOf(b) {
-  if (b.variants?.length) return b.variants;
+  if (b?.variants?.length) return b.variants;
+  if (!b?.itemSet) return [];  // build incomplet : aucune variante plutôt qu'une exception
   return [{ primaryStyle: b.primaryStyle, subStyle: b.subStyle, perks: b.perks, spells: b.spells, blocks: b.itemSet.blocks,
             games: b.sample_size, winrate: b.winrate, pick_rate: 1, tags: [], details: b.details }];
 }
@@ -889,9 +903,13 @@ function choose(i) {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (e.target.matches("input")) return;
+  // Raccourcis chiffrés : pas sur répétition, avec modificateur, dans un champ de saisie ou sous l'écran disco.
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest?.("input, select, textarea, [contenteditable]")) return;
+  if (typeof disco !== "undefined" && disco && !$("#disco")?.hidden) return;
   if (view === "library" && libDetail) {
-    const n = variantsOf(libDetail.cur.build || { variants: [] }).length;
+    const build = libDetail.cur?.build;
+    const n = build ? variantsOf(build).length : 0;
     if (/^[1-9]$/.test(e.key) && Number(e.key) <= n) { libDetail.variant = Number(e.key) - 1; renderLibraryDetail(); }
     return;
   }

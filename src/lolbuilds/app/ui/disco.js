@@ -102,13 +102,16 @@ function discoOverlay() {
 }
 
 async function discoStart() {
-  if (disco?.busy) return;
+  if (state.champSelect?.mode === "aram") return;  // pas de Disco en ARAM
+  if (disco && disco.locked === undefined) return;  // tirage déjà en cours (ou écran fermé en attendant le verrouillage)
   discoStop(false);
   const set = state.settings.disco;
   const el = discoOverlay();
   disco = { busy: true, timers: [] };
   const r = await post("/api/disco/roll", {});
-  if (!r.ok) { disco = null; return; }
+  // Échec : le serveur a déjà poussé un toast d'erreur (ou post() en a affiché un) : pas de second message ici.
+  if (!r.ok) { if (disco?.busy) disco = null; return; }
+  if (!disco) return;  // annulé (fin du champ select) pendant la requête
   const left = state.champSelect?.timer?.endsAt ? state.champSelect.timer.endsAt - Date.now() : 30000;
   Object.assign(disco, { id: r.championId, reel: r.reel, count: r.count, role: r.role, busy: false,
                          duration: Math.max(1500, Math.min(DISCO_SPIN_MS, left - DISCO_MARGIN_MS)) });
@@ -118,7 +121,7 @@ async function discoStart() {
   el.querySelector(".dz-music").textContent = `♫ EUROBEAT · ${DISCO_BPM} BPM`;
   el.hidden = false;
   discoRollView();
-  discoMusicStart();
+  try { discoMusicStart(); } catch { /* sans son (AudioContext refusé) : la roulette tourne quand même */ }
   discoSpin();
 }
 
@@ -280,12 +283,12 @@ function discoMusicStart(seconds = 0) {
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 256;
   out.connect(analyser).connect(ctx.destination);
-  const music = { out, analyser, ctx };
+  const music = { out, analyser, ctx, stopped: false };
   if (set.disco.music) {  // fichier posé dans le dossier lolbuilds (disco-music.mp3…)
     const el = new Audio(`/api/disco/music?t=${Date.now()}`);
     el.loop = true;
     ctx.createMediaElementSource(el).connect(out);
-    el.play().catch(() => discoSynth(music));  // fichier illisible : la boucle intégrée prend le relais
+    el.play().catch(() => { if (!music.stopped) discoSynth(music); });  // fichier illisible : la boucle intégrée prend le relais
     music.el = el;
   } else discoSynth(music);
   if (disco) disco.music = music;
@@ -295,6 +298,7 @@ function discoMusicStart(seconds = 0) {
 }
 
 function discoSynth(music) {
+  if (music.stopped || music.timer) return;  // arrêtée entre-temps (AbortError du play) : ne pas fuir un setInterval
   const { ctx, out } = music;
   const sixteenth = 60 / DISCO_BPM / 4;
   const noise = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
@@ -351,6 +355,7 @@ function discoSynth(music) {
 
 function discoMusicStop(music = disco?.music) {
   if (!music) return;
+  music.stopped = true;
   clearInterval(music.timer);
   cancelAnimationFrame(music.vu);
   music.el?.pause();
