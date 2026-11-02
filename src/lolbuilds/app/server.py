@@ -327,6 +327,12 @@ class Controller:
             self._matchup, self._opponent_override, self._manual = None, None, False
             self._atypical = None
             self._preview, self._pool, self._disco = None, None, None
+            self._matchup_failed, self._disco_done = None, None
+            if self._disco_guard and not self._disco_guard.done():
+                self._disco_guard.cancel()
+            # Rôles et bons picks : relus au champ select suivant (sinon ceux de la veille restent après minuit).
+            self._live_roles.clear()
+            self._counters = None
             self.state["counterPicks"] = None
             self.state["banSuggestions"] = None
             self.state["banPick"] = None

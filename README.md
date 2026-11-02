@@ -15,7 +15,7 @@ Une alternative légère à Blitz ou Porofessor, centrée sur une seule chose : 
 - **Ton vis-à-vis** : ses dernières parties (victoires, KDA, combien sur son champion) et la lecture du duel par OP.GG (avantage en lane, en solo kills, conseil). Le build de ton champion reste affiché pendant la partie.
 - **ARAM** : en ARAM, lolbuilds applique un build issu des **statistiques d'ARAM** d'OP.GG (runes, sorts, items, item set pour l'Abîme hurlant), et plus celui d'une lane de la faille.
 - **Build atypique** : dans les autres modes, le build ARAM du champion est proposé en dernier, avec l'étiquette « Atypique : build ARAM » (jamais appliqué par défaut). Il est ignoré s'il ressemble déjà à une proposition.
-- **Disco pick** (à activer dans les Réglages) : pendant ton tour de pick, un bouton lance une roulette eurobeat (musique, lumières, compte-tours) qui tire au sort un champion que tu possèdes dans ta lane, son build et tes sorts, puis le verrouille dès l'arrêt de la roulette (on assume !). Musique livrée : « 夢の向こうへ » (créée avec Suno par progressivesubtleties471). Pour mettre ton propre morceau, pose un fichier `disco-music.mp3` dans le dossier `%USERPROFILE%\.lolbuilds`.
+- **Disco pick** (à activer dans les Réglages) : pendant ton tour de pick, un bouton lance une roulette eurobeat (musique, lumières, compte-tours) qui tire au sort un champion que tu possèdes dans ta lane, son build et tes sorts, puis le verrouille dès l'arrêt de la roulette (on assume !). Rien n'apparaît dans League avant la fin de la roulette, qui accélère s'il reste moins de 5 secondes pour choisir. Pas de Disco pick en ARAM. Musique livrée : « 夢の向こうへ » (créée avec Suno par progressivesubtleties471). Pour mettre ton propre morceau, pose un fichier `disco-music.mp3` dans le dossier `%USERPROFILE%\.lolbuilds`.
 - **Thèmes** aux couleurs de Runeterra : Hextech, Noxus, Piltover et Ionia.
 
 Les statistiques viennent d'OP.GG (parties classées Émeraude et plus).
@@ -78,7 +78,7 @@ La version portable se met à jour de la même façon : le nouvel exe est télé
 Un build est « à jour » pour la journée : le premier pick d'un champion dans la journée le redemande à OP.GG, puis il est gardé jusqu'au lendemain. Il n'y a pas de rafraîchissement en arrière-plan : « Tout télécharger » (Réglages) met à jour d'un coup tous les builds qui ne datent pas d'aujourd'hui, et ceux que tu joues se mettent à jour d'eux-mêmes. Si OP.GG ne répond pas, le dernier build connu est gardé. La date de chaque build est indiquée dans la bibliothèque (en gris si elle n'est pas d'aujourd'hui) et sous le build en champ select.
 
 **Comment l'ARAM est-il détecté ?**
-Le client active le banc de remplaçants en ARAM : lolbuilds s'en sert pour reconnaître la partie. Pour désactiver les builds ARAM et l'« Atypique », mets `aram = false` dans la section `[opgg]` de `config.toml`.
+Par la carte de la partie (l'Abîme hurlant). En partie, les joueurs des deux équipes s'affichent aussi en ARAM. Pour désactiver les builds ARAM et l'« Atypique », mets `aram = false` dans la section `[opgg]` de `config.toml`.
 
 **Est-ce que ça touche à mes pages de runes ?**
 lolbuilds crée ses propres pages, dont le nom commence par `[Auto]`, et ne supprime que celles-là. Si toutes tes pages sont occupées par tes pages personnelles, il n'en supprime aucune et te le signale. Même chose pour les item sets : les tiens ne sont jamais modifiés.
