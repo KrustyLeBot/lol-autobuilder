@@ -284,7 +284,7 @@ function renderTop() {
   let s = state?.connection || "offline";
   let text = { waiting: "En attente du client", connected: "Client connecté", demo: "Démo", offline: "Serveur local arrêté" }[s];
   if (s === "connected" && state.champSelect) { s = "live"; text = "Champ select en direct"; }
-  if (s === "connected" && state.phase === "InProgress") text = "Partie en cours";
+  if (s === "connected" && ["GameStart", "InProgress", "Reconnect"].includes(state.phase)) text = "Partie en cours";
   conn.dataset.state = s;
   label.textContent = text;
   if (!state?.settings) return;
@@ -529,6 +529,7 @@ function laneSideHtml(p, enemy) {
   let stats;
   if (p.status === "loading") stats = '<span class="ln-line"><span class="loading">Profil OP.GG…</span></span>';
   else if (p.status === "error") stats = '<span class="ln-line dim">Profil introuvable sur OP.GG</span>';
+  else if (p.status === "bot") stats = '<span class="ln-line dim">Bot</span>';
   else {
     const c = p.champion;
     stats = `<span class="ln-rank"><b>${esc(p.rank)}</b>${p.lp != null ? ` · ${p.lp} LP` : ""}${p.games ? ` · saison <b class="${wrClass(p.winrate)}">${pct(p.winrate, 0)}</b>` : ""}</span>

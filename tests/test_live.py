@@ -768,3 +768,97 @@ def test_disco_music_is_the_players_file(ctrl):
     (ctrl.cfg.cache_dir / "disco-music.mp3").write_bytes(b"ID3")
     (ctrl.cfg.cache_dir / "disco-music.txt").write_text("pas de la musique")
     assert ctrl._settings()["disco"]["music"] == "disco-music.mp3"
+
+
+# --------------------------------------------------------------------------- ARAM : partie et Disco pick
+
+def test_live_players_waits_while_the_game_loads():
+    """Écran de chargement : l'API répond 404 avec un JSON d'erreur, jamais pris pour la liste des joueurs."""
+    import httpx
+
+    from lolbuilds import players
+
+    def loading(_req):
+        return httpx.Response(404, json={"errorCode": "RESOURCE_NOT_FOUND", "httpStatus": 404})
+
+    with httpx.Client(transport=httpx.MockTransport(loading)) as http, pytest.raises(httpx.HTTPError):
+        players.live_players(http)
+
+    def loaded(req):
+        if req.url.path.endswith("activeplayername"):
+            return httpx.Response(200, json="Moi#EUW")
+        return httpx.Response(200, json=[{"riotId": "Moi#EUW", "team": "ORDER"}, "intrus"])
+
+    with httpx.Client(transport=httpx.MockTransport(loaded)) as http:
+        assert players.live_players(http) == ("Moi#EUW", [{"riotId": "Moi#EUW", "team": "ORDER"}])
+
+
+def test_aram_team_is_shown_without_positions(ctrl, monkeypatch):
+    from lolbuilds import players
+
+    everyone = [
+        {"riotId": "Moi#EUW", "team": "ORDER", "position": "", "rawChampionName": "game_character_displayname_Ahri"},
+        {"riotId": "Pote#123", "team": "ORDER", "position": "", "rawChampionName": "game_character_displayname_Thresh"},
+        {"riotId": "Ennemi#1", "team": "CHAOS", "position": "", "rawChampionName": "game_character_displayname_Syndra"},
+        {"riotId": "", "summonerName": "", "isBot": True, "team": "CHAOS", "position": "",
+         "rawChampionName": "game_character_displayname_Pantheon"},
+    ]
+    monkeypatch.setattr(players, "live_players", lambda: ("Moi#EUW", everyone))
+    monkeypatch.setattr(ctrl.live, "player_profile", lambda name, tag, region: PROFILE)
+
+    async def scenario():
+        ctrl.state["phase"] = "ChampSelect"
+        await ctrl.on_session(aram_session())
+        await ctrl.on_session(None)  # fin du champ select : le build reste affiché
+        ctrl.state["phase"] = "GameStart"
+        ctrl.on_phase("GameStart")  # chargement de la partie : les joueurs arrivent déjà
+        await ctrl._team_task
+
+    asyncio.run(scenario())
+    team = ctrl.state["team"]
+    assert team["status"] == "ok"
+    assert [p["riotId"] for p in team["players"]] == ["Moi#EUW", "Pote#123"]
+    assert [p["status"] for p in team["enemies"]] == ["ok", "bot"]
+    assert ctrl.state["current"]["championId"] == 103
+
+
+def test_team_never_stays_loading_after_an_error(ctrl, monkeypatch):
+    from lolbuilds import players
+
+    monkeypatch.setattr(players, "live_players", lambda: ("Moi#EUW", [{"riotId": "Moi#EUW", "team": "ORDER"}]))
+    monkeypatch.setattr(players, "riot_id", lambda p: 1 / 0)
+
+    async def scenario():
+        ctrl.on_phase("InProgress")
+        await ctrl._team_task
+
+    asyncio.run(scenario())
+    assert ctrl.state["team"]["status"] == "unavailable"
+
+
+def test_no_disco_pick_in_aram(ctrl):
+    ctrl.prefs.update({"disco": {"enabled": True}})
+    s = aram_session()
+    s["actions"] = [[{"id": 21, "actorCellId": 2, "type": "pick", "championId": 103, "completed": False, "isInProgress": True}]]
+    s["timer"] = {"phase": "BAN_PICK", "adjustedTimeLeftInPhase": 30000}
+    asyncio.run(ctrl.on_session(s))
+    assert not asyncio.run(ctrl.disco_roll())["ok"]
+    assert not asyncio.run(ctrl.disco_lock(103, 0, None))["ok"]
+    assert not any(m == "PATCH" for m, *_ in ctrl.lcu.calls)
+
+
+def test_aram_detected_from_the_map(ctrl):
+    """Abîme hurlant (carte 12) = ARAM ; le banc seul (ARURF, sur la Faille) ne suffit plus."""
+    async def gameflow(map_id):
+        async def request(method, path, body=None):
+            if path == "/lol-gameflow/v1/session":
+                return 200, {"map": {"id": map_id}}
+            return await FakeLcu().request(method, path, body)
+        ctrl.lcu.request = request
+        await ctrl.on_session(aram_session())  # session reçue avant la carte
+        await ctrl.on_event({"uri": "/lol-gameflow/v1/gameflow-phase", "data": "ChampSelect"})
+
+    asyncio.run(gameflow(11))
+    assert ctrl.state["champSelect"]["mode"] == "classic" and ctrl.state["current"]["mode"] == "classic"
+    asyncio.run(gameflow(12))
+    assert ctrl.state["champSelect"]["mode"] == "aram" and ctrl.state["current"]["mode"] == "aram"

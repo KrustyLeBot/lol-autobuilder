@@ -44,7 +44,8 @@ APPLY_DEBOUNCE = 0.8  # s : évite de recréer une page de runes à chaque survo
 LIVE_DEBOUNCE = 0.6  # s : le client envoie les sessions en rafale
 COUNTER_MIN_GAMES = 300  # parties minimum dans le duel pour proposer un pick
 COUNTER_MAX = 8
-MAIN_MASTERY_RANK = 15  # « tes champions » : les 15 meilleures maîtrises
+MAIN_MASTERY_RANK = 15
+ARAM_MAP = 12  # Abîme hurlant  # « tes champions » : les 15 meilleures maîtrises
 BAN_MAX = 6
 
 
@@ -131,6 +132,8 @@ def select_counter_picks(counters: list[dict[str, Any]], unavailable: set[int], 
 
 # Phases hors partie : on oublie le build et les joueurs de la partie précédente.
 IDLE_PHASES = ("None", "Lobby", "Matchmaking", "ReadyCheck")
+# Partie lancée (écran de chargement compris) : les joueurs arrivent dès que l'API du jeu répond.
+GAME_PHASES = ("GameStart", "InProgress", "Reconnect")
 TEAM_WAIT = 20  # s : au-delà, les joueurs s'affichent même si quelques profils OP.GG manquent
 
 
@@ -162,6 +165,8 @@ class Controller:
         self._pool: tuple[set[int] | None, dict[int, int]] | None = None  # (possédés, maîtrises) du joueur
         self._counters: tuple[tuple[str, str], list[dict[str, Any]]] | None = None
         self._team_task: asyncio.Task[None] | None = None
+        self._last_session: dict[str, Any] | None = None
+        self._map_id: int | None = None  # carte de la file en cours (12 : ARAM), lue via le gameflow
         self.state: dict[str, Any] = {
             "connection": "demo" if demo else "waiting",
             "phase": "None",
@@ -258,9 +263,7 @@ class Controller:
         stage = next((t for t in ("ban", "pick") if t in running), phase.lower())
         left = timer.get("adjustedTimeLeftInPhase") or 0
         return {
-            # ARAM : le client active le banc de remplaçants (et ne donne aucune lane). Hypothèse non vérifiée sur
-            # un vrai client ; les autres modes sans banc restent « classic ».
-            "mode": "aram" if s.get("benchEnabled") else "classic",
+            "mode": self._session_mode(s),
             "allies": allies,
             "enemies": enemies,
             "bans": bans,
@@ -272,8 +275,31 @@ class Controller:
                       "total": timer.get("totalTimeInPhase") or None},  # ms, pour la barre de progression
         }
 
+    def _session_mode(self, s: dict[str, Any]) -> str:
+        """ARAM d'après la carte de la file (Abîme hurlant, 12), sinon d'après le banc de remplaçants.
+
+        Le banc seul ne suffit pas : l'ARURF l'active aussi, sur la Faille."""
+        if self._map_id is not None:
+            return "aram" if self._map_id == ARAM_MAP else "classic"
+        return "aram" if s.get("benchEnabled") else "classic"
+
+    async def _load_map(self) -> None:
+        """Carte de la partie en préparation (lue au début du champ select)."""
+        self._map_id = None
+        if not self.lcu:
+            return
+        try:
+            status, data = await self.lcu.request("GET", "/lol-gameflow/v1/session")
+        except Exception as exc:
+            log.info("Session de jeu illisible : %s", exc)
+            return
+        if status == 200 and isinstance(data, dict):
+            map_id = (data.get("map") or {}).get("id") or ((data.get("gameData") or {}).get("queue") or {}).get("mapId")
+            self._map_id = int(map_id) if isinstance(map_id, int) and map_id > 0 else None
+
     async def on_session(self, s: dict[str, Any] | None) -> None:
         if not s:
+            self._last_session = None
             # Champion verrouillé : son build reste affiché pendant la partie (oublié au retour au salon).
             keep = bool(self.state["current"] and self.state["current"].get("locked")
                         and self.state.get("phase") not in IDLE_PHASES)
@@ -293,6 +319,7 @@ class Controller:
             self.state["banPick"] = None
             await self.broadcast()
             return
+        self._last_session = s
         summary = self._summarize_session(s)
         self.state["champSelect"] = summary
         me = next((a for a in summary["allies"] if a["isMe"]), None)
@@ -303,7 +330,8 @@ class Controller:
         shown_id = champion_id or self._disco or (me or {}).get("intent") or self._preview or 0
         position = (me or {}).get("position", "")
         current = self.state["current"]
-        if shown_id and (not current or current["championId"] != shown_id or current.get("assigned") != position):
+        if shown_id and (not current or current["championId"] != shown_id or current.get("assigned") != position
+                         or current.get("mode") != ("aram" if self._aram_mode() else "classic")):
             self.load_build(shown_id, position)
         elif not shown_id:
             self.state["current"] = None
@@ -513,7 +541,8 @@ class Controller:
         cs = self.state["champSelect"] or {}
         turn = cs.get("turn")
         me = next((a for a in cs.get("allies", []) if a["isMe"]), None)
-        if not self.lcu or not turn or turn.get("type") != "pick" or turn.get("id") is None or not me:
+        # ARAM : le jeu attribue le champion, le Disco pick n'a rien à choisir.
+        if cs.get("mode") == "aram" or not self.lcu or not turn or turn.get("type") != "pick" or turn.get("id") is None or not me:
             return None
         return cs, turn, me
 
@@ -540,6 +569,8 @@ class Controller:
         """Tire un champion au hasard (possédé, libre, de ma lane), le survole dans le client et charge son build."""
         if not self.prefs.data["disco"]["enabled"]:
             return {"ok": False, "error": "Le Disco pick est désactivé (Réglages)"}
+        if (self.state["champSelect"] or {}).get("mode") == "aram":
+            return {"ok": False, "error": "Pas de Disco pick en ARAM : le champion est attribué par le jeu"}
         turn = self._pick_turn()
         if not turn:
             return {"ok": False, "error": "Ce n'est pas ton tour de choisir"}
@@ -613,7 +644,7 @@ class Controller:
 
     def on_phase(self, phase: str) -> None:
         """Partie en cours : charge les profils des joueurs ; sinon on les oublie."""
-        if phase == "InProgress":
+        if phase in GAME_PHASES:
             if self.live and (not self._team_task or self._team_task.done()) and not self.state["team"]:
                 self._team_task = asyncio.create_task(self._load_team())
         elif phase in (*IDLE_PHASES, "ChampSelect"):
@@ -626,10 +657,22 @@ class Controller:
                 self.build, self._base = None, None
 
     async def _load_team(self) -> None:
-        assert self.live
         team: dict[str, Any] = {"status": "loading", "players": []}
         self.state["team"] = team
         await self.broadcast()
+        try:
+            await self._fill_team(team)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Sans ça, une réponse inattendue laissait l'écran « en attente du chargement » jusqu'à la fin de la partie.
+            log.exception("Joueurs de la partie")
+            if self.state["team"] is team and team["status"] == "loading":
+                team["status"] = "unavailable" if not team["players"] else "ok"
+                await self.broadcast()
+
+    async def _fill_team(self, team: dict[str, Any]) -> None:
+        assert self.live
         region = "EUW"
         if self.lcu:
             try:
@@ -678,6 +721,10 @@ class Controller:
 
         async def load(e: dict[str, Any], p: dict[str, Any]) -> None:
             name, tag = players.riot_id(p)
+            if p.get("isBot") or not name:  # bots (coop) : pas de profil OP.GG
+                e["status"] = "bot"
+                team["done"] += 1
+                return
             try:
                 profile = await asyncio.to_thread(self.live.player_profile, name, tag, region)
                 champ_name = self.champions.names.get(players.champion_id(p), players.champion_id(p))
@@ -693,13 +740,17 @@ class Controller:
         # Tous les profils en même temps ; l'écran les montre ensemble une fois chargés (ou après TEAM_WAIT s,
         # les retardataires restant « Profil OP.GG… »).
         tasks = [asyncio.create_task(load(e, p)) for e, p in pairs]
-        _, pending = await asyncio.wait(tasks, timeout=TEAM_WAIT)
-        team["status"] = "partial" if pending else "ok"
-        await self.broadcast()
-        if pending:
-            await asyncio.wait(pending)
-            team["status"] = "ok"
+        try:
+            _, pending = await asyncio.wait(tasks, timeout=TEAM_WAIT)
+            team["status"] = "partial" if pending else "ok"
             await self.broadcast()
+            if pending:
+                await asyncio.wait(pending)
+                team["status"] = "ok"
+                await self.broadcast()
+        finally:
+            for t in tasks:  # partie terminée pendant le chargement : on n'écrit plus dans l'ancienne équipe
+                t.cancel()
 
     async def _load_opponent(self, opp: dict[str, Any], name: str, tag: str, region: str, champ: str) -> None:
         """Mon vis-à-vis : ses dernières parties et la lecture du duel par OP.GG."""
@@ -1013,6 +1064,7 @@ class Controller:
                 _, phase = await conn.request("GET", "/lol-gameflow/v1/gameflow-phase")
                 self.state["phase"] = phase or "None"
                 self.on_phase(self.state["phase"])
+                await self._load_map()
                 status, session = await conn.request("GET", "/lol-champ-select/v1/session")
                 await self.on_session(session if status == 200 else None)
                 log.info("Connecté au client League (port %s)", creds.port)
@@ -1041,6 +1093,13 @@ class Controller:
         if uri == "/lol-gameflow/v1/gameflow-phase":
             self.state["phase"] = event.get("data") or "None"
             self.on_phase(self.state["phase"])
+            if self.state["phase"] == "ChampSelect":
+                await self._load_map()
+                cs = self.state["champSelect"]
+                if cs and self._last_session and cs["mode"] != self._session_mode(self._last_session):
+                    await self.on_session(self._last_session)  # session arrivée avant la carte
+            elif self.state["phase"] in IDLE_PHASES:
+                self._map_id = None
             await self.broadcast()
         elif uri == "/lol-champ-select/v1/session":
             deleted = (event.get("eventType") or "").lower() == "delete"

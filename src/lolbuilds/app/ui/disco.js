@@ -40,7 +40,8 @@ document.addEventListener("click", (e) => {
 /** Bouton de la colonne de gauche, pendant mon tour de pick (si le Disco pick est activé). */
 function discoButtonHtml() {
   const d = state?.settings?.disco;
-  if (!d?.enabled || state.champSelect?.turn?.type !== "pick") return "";
+  // Jamais en ARAM : le champion y est attribué au hasard par le jeu.
+  if (!d?.enabled || state.champSelect?.mode === "aram" || state.champSelect?.turn?.type !== "pick") return "";
   const role = ROLE_LABEL[(state.champSelect.allies.find((a) => a.isMe) || {}).position];
   return `<button type="button" class="disco-btn" data-discostart>
     <span class="disco-btn-streaks" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
