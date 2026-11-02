@@ -819,6 +819,7 @@ def test_aram_team_is_shown_without_positions(ctrl, monkeypatch):
     assert team["status"] == "ok"
     assert [p["riotId"] for p in team["players"]] == ["Moi#EUW", "Pote#123"]
     assert [p["status"] for p in team["enemies"]] == ["ok", "bot"]
+    assert not any(t["text"].startswith("Peu joué") for t in team["players"][1]["tags"])  # champion tiré au sort
     assert ctrl.state["current"]["championId"] == 103
 
 

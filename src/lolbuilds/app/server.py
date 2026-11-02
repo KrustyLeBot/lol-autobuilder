@@ -744,6 +744,7 @@ class Controller:
             or next((e for e in team["enemies"] if opp_id and e["championId"] == opp_id), None)
         if opp:
             opp["isOpponent"] = True
+        aram = self._map_id == ARAM_MAP or cur.get("mode") == "aram"
         pairs = [*zip(team["players"], allies), *zip(team["enemies"], enemies)]
         team["total"], team["done"] = len(pairs), 0
         await self.broadcast()
@@ -757,7 +758,7 @@ class Controller:
             try:
                 profile = await asyncio.to_thread(self.live.player_profile, name, tag, region)
                 champ_name = self.champions.names.get(players.champion_id(p), players.champion_id(p))
-                e.update(players.player_card(profile, e["championId"], champ_name), status="ok")
+                e.update(players.player_card(profile, e["championId"], champ_name, random_champion=aram), status="ok")
             except Exception as exc:
                 log.warning("Profil OP.GG de %s#%s indisponible : %s", name, tag, exc)
                 e["status"] = "error"

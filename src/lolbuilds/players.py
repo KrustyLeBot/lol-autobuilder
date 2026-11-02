@@ -61,8 +61,10 @@ def _pct(win: int, games: int) -> float:
     return round(win / games, 3) if games else 0.0
 
 
-def player_card(profile: Any, champion_key: int | None, champion_name: str) -> dict[str, Any]:
-    """Résumé d'un profil OP.GG : rang, saison, champion joué, indications (good / bad / info)."""
+def player_card(profile: Any, champion_key: int | None, champion_name: str, random_champion: bool = False) -> dict[str, Any]:
+    """Résumé d'un profil OP.GG : rang, saison, champion joué, indications (good / bad / info).
+
+    `random_champion` (ARAM) : le champion est tiré au sort, « peu joué » n'apprend rien sur le joueur."""
     summoner = ((profile or {}).get("data") or {}).get("summoner") or {}
     solo = next((s for s in summoner.get("league_stats") or [] if s.get("game_type") == "SOLORANKED"), {}) or {}
     tier = (solo.get("tier_info") or {}).get("tier")
@@ -79,7 +81,8 @@ def player_card(profile: Any, champion_key: int | None, champion_name: str) -> d
     if played and (played.get("play") or 0) >= 20 and total and played["play"] / total >= 0.25:
         tags.append({"text": f"Main {champion_name}", "kind": "good"})
     if not played or (played.get("play") or 0) < 3:
-        tags.append({"text": f"Peu joué {champion_name} cette saison", "kind": "bad"})
+        if not random_champion:
+            tags.append({"text": f"Peu joué {champion_name} cette saison", "kind": "bad"})
     elif (played.get("play") or 0) >= 10:
         wr = _pct(played.get("win") or 0, played["play"])
         if wr >= 0.6:
