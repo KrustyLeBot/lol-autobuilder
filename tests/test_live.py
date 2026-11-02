@@ -862,3 +862,85 @@ def test_aram_detected_from_the_map(ctrl):
     assert ctrl.state["champSelect"]["mode"] == "classic" and ctrl.state["current"]["mode"] == "classic"
     asyncio.run(gameflow(12))
     assert ctrl.state["champSelect"]["mode"] == "aram" and ctrl.state["current"]["mode"] == "aram"
+
+
+# --------------------------------------------------------------------------- application : concurrence
+
+def test_manual_apply_cancels_the_pending_auto_apply(ctrl, monkeypatch):
+    monkeypatch.setattr(server, "APPLY_DEBOUNCE", 0.05)
+
+    async def scenario():
+        await ctrl.on_session(ahri_vs([134]))
+        await ctrl._live_refresh()  # programme l'application automatique
+        pending = ctrl._apply_task
+        await ctrl.apply(1)  # choix manuel avant la fin de l'attente
+        await asyncio.sleep(0.1)
+        return pending
+
+    pending = asyncio.run(scenario())
+    assert pending.cancelled()
+    assert ctrl.state["applied"]["variant"] == 1 and not ctrl.state["applied"]["auto"]
+
+
+def test_busy_is_reset_when_the_apply_fails(ctrl, monkeypatch):
+    from lolbuilds.app.applier import BuildApplier
+
+    async def boom(self, lcu, build):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(BuildApplier, "apply", boom)
+
+    async def scenario():
+        await ctrl.on_session(ahri_vs([134]))
+        await ctrl._live_refresh()
+        if ctrl._apply_task:
+            await asyncio.gather(ctrl._apply_task, return_exceptions=True)
+
+    asyncio.run(scenario())
+    assert ctrl.state["busy"] is False and not ctrl._applying
+
+
+def test_applies_never_overlap(ctrl, monkeypatch):
+    from lolbuilds.app.applier import BuildApplier
+
+    running, overlaps = [0], []
+
+    async def slow(self, lcu, build):
+        running[0] += 1
+        overlaps.append(running[0])
+        await asyncio.sleep(0.02)
+        running[0] -= 1
+        self.problems = {}
+        return {"runes": True, "spells": True, "itemSet": True}
+
+    monkeypatch.setattr(BuildApplier, "apply", slow)
+
+    async def scenario():
+        await ctrl.on_session(ahri_vs([134]))
+        await ctrl._live_refresh()
+        await asyncio.gather(ctrl.apply(0), ctrl.apply(1), ctrl.apply(0))
+
+    asyncio.run(scenario())
+    assert max(overlaps) == 1
+
+
+def test_live_refresh_survives_an_opgg_failure(ctrl, monkeypatch):
+    def down(*_a, **_k):
+        raise RuntimeError("OP.GG en panne")
+
+    monkeypatch.setattr(ctrl.live, "matchup", down)
+    run(ctrl, ahri_vs([134]))
+    cur = ctrl.state["current"]
+    assert cur["opponent"]["status"] == "empty" and not cur["fetching"]
+    assert ctrl.state["applied"] is not None  # le build global est quand même appliqué
+
+
+def test_bad_requests_get_a_400(ctrl):
+    from aiohttp.test_utils import TestClient, TestServer
+
+    async def scenario():
+        async with TestClient(TestServer(server.make_app(ctrl))) as client:
+            r = await client.post("/api/ban", data="pas du json")
+            return r.status
+
+    assert asyncio.run(scenario()) == 400

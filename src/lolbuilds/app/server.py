@@ -155,6 +155,8 @@ class Controller:
         self._opponent_override: int | None = None  # adversaire choisi à la main dans l'UI
         self._manual = False  # l'utilisateur a choisi un build : plus d'application automatique
         self._apply_task: asyncio.Task[None] | None = None
+        self._apply_lock = asyncio.Lock()
+        self._applying = False
         self._applied_for: tuple[Any, ...] | None = None
         self.live = LiveBuilds(cfg, self.cache) if cfg.opgg.live and not (demo or demo_builds) else None
         self._live_dirty = asyncio.Event()
@@ -220,7 +222,7 @@ class Controller:
         for ws in list(self.sockets):
             try:
                 await ws.send_str(msg)
-            except ConnectionError:
+            except Exception:  # page fermée entre-temps (ConnectionResetError, RuntimeError selon aiohttp)
                 self.sockets.discard(ws)
 
     async def toast(self, kind: str, text: str) -> None:
@@ -441,14 +443,22 @@ class Controller:
                 and self._applied_for != self._apply_key()):
             self._schedule_apply(cur["championId"])
 
-    def _schedule_apply(self, champion_id: int) -> None:
-        if self._apply_task and not self._apply_task.done():
+    def _cancel_auto_apply(self) -> None:
+        """Annule l'application automatique en attente (jamais une application déjà commencée)."""
+        if self._apply_task and not self._apply_task.done() and not self._applying:
             self._apply_task.cancel()
+
+    def _schedule_apply(self, champion_id: int) -> None:
+        if self._applying:
+            return  # la fin de l'application en cours relance la vérification
+        self._cancel_auto_apply()
 
         async def later() -> None:
             await asyncio.sleep(APPLY_DEBOUNCE)
             current = self.state["current"]
-            if current and current["championId"] == champion_id and current["locked"]:
+            # Un choix manuel (ou le Disco pick) pendant l'attente l'emporte sur l'application automatique.
+            if (current and current["championId"] == champion_id and current["locked"] and not self._manual
+                    and self._applied_for != self._apply_key()):
                 await self.apply(self.state["selection"]["variant"], auto=True)
 
         self._apply_task = asyncio.create_task(later())
@@ -461,23 +471,39 @@ class Controller:
             return {"ok": False, "error": "Aucun build chargé"}
         if not self.lcu or not self.state["champSelect"]:
             return {"ok": False, "error": "Disponible uniquement pendant la sélection des champions"}
+        if not auto:
+            self._cancel_auto_apply()
+            self._manual = True
         variant = max(0, min(variant, max(0, len(self.build.variants) - 1)))
         build = self.build.variant(variant)
-        if spells_option is not None and self.build.spell_options:
+        if spells_option is not None and 0 <= spells_option < len(self.build.spell_options):
             build = dataclasses.replace(build, spells=list(self.build.spell_options[spells_option]["spells"]))
+        else:
+            spells_option = None
         if spells:
             build = dataclasses.replace(build, spells=list(spells))
-        self.state["busy"] = True
-        self.state["selection"] = {"variant": variant, "spells": spells_option}
-        await self.broadcast()
+        key, session = self._apply_key(), self.state["champSelect"]
         applier = self.applier()
-        steps = await applier.apply(self.lcu, build)
-        self._applied_for = self._apply_key()
-        self.state["busy"] = False
+        # Une seule application à la fois : deux PUT d'item sets simultanés s'écraseraient.
+        async with self._apply_lock:
+            self._applying = True
+            self.state["busy"] = True
+            self.state["selection"] = {"variant": variant, "spells": spells_option}
+            await self.broadcast()
+            try:
+                steps = await applier.apply(self.lcu, build)
+            finally:
+                self._applying = False
+                self.state["busy"] = False
+        self._applied_for = key
+        if self.state["champSelect"] is None and session is not None:
+            await self.broadcast()
+            return {"ok": False, "error": "La sélection des champions est terminée"}
         self.state["applied"] = {"variant": variant, "spells": spells_option, "steps": steps, "auto": auto, "at": time.time(),
                                  "problems": applier.problems}
+        if self._applied_for != self._apply_key():
+            self._maybe_auto_apply()  # le build a changé pendant l'application (adversaire arrivé)
         if not auto:
-            self._manual = True
             extra = len(self._matchup_variants())
             if remember and variant >= extra:  # préférence mémorisée seulement parmi les builds globaux
                 self.prefs.data["preferred"][f"{self.build.champion}_{self.build.role}"] = variant - extra
@@ -489,11 +515,13 @@ class Controller:
     async def apply_spells(self, option: int) -> dict[str, Any]:
         if not self.build or not self.lcu or not self.state["champSelect"]:
             return {"ok": False, "error": "Disponible uniquement pendant la sélection des champions"}
+        if not 0 <= option < len(self.build.spell_options):
+            return {"ok": False, "error": "Paire de sorts inconnue"}
         pair = self.build.spell_options[option]["spells"]
         build = dataclasses.replace(self.build, spells=list(pair))
         if not await self.applier().apply_spells(self.lcu, build):
             await self.toast("warn", "Le client a refusé le changement de sorts")
-            return {"ok": True}
+            return {"ok": False}
         self.state["selection"]["spells"] = option
         if self.state["applied"]:
             self.state["applied"]["spells"] = option
@@ -615,6 +643,8 @@ class Controller:
         if spells is not None and (len(spells) != 2 or len(set(spells)) != 2 or not set(spells) <= set(RIFT_SPELLS)):
             spells = None
         path = f"/lol-champ-select/v1/session/actions/{action['id']}"
+        self._cancel_auto_apply()
+        self._manual = True  # le build tiré ne doit pas être remplacé par l'application automatique
         status, data = await self.lcu.request("PATCH", path, {"championId": champion_id, "completed": True})
         log.info("Disco pick : verrouillage de %s -> %s %s", name, status, data or "")
         if status not in (200, 204):
@@ -624,7 +654,6 @@ class Controller:
             log.info("Disco pick : sélection puis verrouillage de %s -> %s %s", name, status, data or "")
             if status not in (200, 204):
                 return {"ok": False, "error": f"Le client a refusé de verrouiller {name} ({status})"}
-        self._manual = True  # le build tiré ne doit pas être remplacé par l'application automatique
         for i in range(40):  # le build OP.GG peut encore être en route (s'il n'arrive pas, on n'attend pas 8 s)
             cur = self.state["current"]
             if cur and cur["championId"] == champion_id and not cur.get("fetching") and (self.build or i >= 10):
@@ -975,7 +1004,11 @@ class Controller:
                 self._live_roles[champ] = await asyncio.to_thread(self.live.champion_roles, champ)
         except Exception as exc:
             log.warning("OP.GG : rôles de %s indisponibles (%s)", champ, exc)
-        if not role or self.state["current"] is not cur:
+        if self.state["current"] is not cur:
+            return
+        if not role:  # OP.GG injoignable et pas de rôle assigné : on garde le build du cache tel quel
+            await self.broadcast()
+            self._maybe_auto_apply()
             return
         cur["role"] = role
         cur["roles"] = sorted(set(cur["roles"]) | set(self._live_roles.get(champ, [])) | {role}, key=ROLES.index)
@@ -984,11 +1017,18 @@ class Controller:
         if not self.cache.is_fresh(champ, role, date.today()):
             cur["fetching"] = True
             await self.broadcast()
-            build = await asyncio.to_thread(self.live.global_build, champ, role)
+            try:
+                build = await asyncio.to_thread(self.live.global_build, champ, role)
+            except Exception:
+                log.exception("OP.GG : build %s %s", champ, role)
+                build = None
+            finally:
+                cur["fetching"] = False  # sinon « Récupération… » resterait affiché
             if not still(role):
                 return
-            cur["fetching"] = False
-            self._base = build or self._base
+            if build and build.role != role:
+                build = None
+            self._base = build or (self._base if self._base and self._base.role == role else None)
             if build and build.fetched_at:
                 self.state["lastPrefetch"] = max(build.fetched_at, self.state["lastPrefetch"] or "")
             self._compose()
@@ -996,7 +1036,11 @@ class Controller:
 
         # 2 bis) « Atypique » : le build ARAM du champion (une requête par champion et par jour, puis le cache)
         if self.cfg.opgg.aram:
-            aram = await asyncio.to_thread(self.live.global_build, champ, ARAM)
+            try:
+                aram = await asyncio.to_thread(self.live.global_build, champ, ARAM)
+            except Exception:
+                log.exception("OP.GG : build ARAM de %s", champ)
+                aram = None
             if not still(role):
                 return
             if aram and aram.variants:
@@ -1009,7 +1053,11 @@ class Controller:
         # 3) propositions contre l'adversaire de lane
         cs = self.state["champSelect"]
         if self.cfg.opgg.matchup and cs:
-            opponent, guessed = await self._lane_opponent(role)
+            try:
+                opponent, guessed = await self._lane_opponent(role)
+            except Exception as exc:
+                log.warning("OP.GG : adversaire de lane introuvable (%s)", exc)
+                opponent, guessed = None, False
             if not still(role):
                 return
             if not opponent:
@@ -1023,7 +1071,11 @@ class Controller:
                                    "status": "ok" if self._matchup and self._matchup[0] == key else "loading"}
                 if cur["opponent"]["status"] == "loading":
                     await self.broadcast()
-                    variants = await asyncio.to_thread(self.live.matchup, champ, role, opponent)
+                    try:
+                        variants = await asyncio.to_thread(self.live.matchup, champ, role, opponent)
+                    except Exception:
+                        log.exception("OP.GG : %s contre %s", champ, opponent)
+                        variants = []
                     if not still(role):
                         return
                     self._matchup = (key, variants)
@@ -1038,10 +1090,15 @@ class Controller:
         if not self.cache.is_fresh(champ, ARAM, date.today()):
             cur["fetching"] = True
             await self.broadcast()
-            build = await asyncio.to_thread(self.live.global_build, champ, ARAM)
+            try:
+                build = await asyncio.to_thread(self.live.global_build, champ, ARAM)
+            except Exception:
+                log.exception("OP.GG : build ARAM de %s", champ)
+                build = None
+            finally:
+                cur["fetching"] = False
             if self.state["current"] is not cur:
                 return
-            cur["fetching"] = False
             self._base = build or self._base
             if build and build.fetched_at:
                 self.state["lastPrefetch"] = max(build.fetched_at, self.state["lastPrefetch"] or "")
@@ -1053,30 +1110,45 @@ class Controller:
 
     async def lcu_loop(self) -> None:
         while True:
-            self.state["connection"] = "waiting"
-            await self.broadcast()
-            creds = await wait_for_client()
-            conn = LcuConnection(creds)
-            self.lcu = conn
             try:
-                await self._wait_ready(conn)
-                self.state["connection"] = "connected"
-                _, phase = await conn.request("GET", "/lol-gameflow/v1/gameflow-phase")
-                self.state["phase"] = phase or "None"
-                self.on_phase(self.state["phase"])
-                await self._load_map()
-                status, session = await conn.request("GET", "/lol-champ-select/v1/session")
-                await self.on_session(session if status == 200 else None)
-                log.info("Connecté au client League (port %s)", creds.port)
-                async for event in conn.events():
-                    await self.on_event(event)
-            except Exception as exc:
-                log.info("Connexion au client perdue : %s", exc)
-            finally:
-                self.lcu = None
-                await conn.close()
-                await self.on_session(None)
+                await self._lcu_session()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # la boucle ne doit jamais s'arrêter : sinon plus rien ne suit le client
+                log.exception("Boucle du client League")
             await asyncio.sleep(2)
+
+    async def _lcu_session(self) -> None:
+        """Une connexion au client, de l'attente du client jusqu'à sa fermeture."""
+        self.state["connection"] = "waiting"
+        await self.broadcast()
+        creds = await wait_for_client()
+        conn = LcuConnection(creds)
+        self.lcu = conn
+        try:
+            await self._wait_ready(conn)
+            self.state["connection"] = "connected"
+            _, phase = await conn.request("GET", "/lol-gameflow/v1/gameflow-phase")
+            self.state["phase"] = phase or "None"
+            self.on_phase(self.state["phase"])
+            await self._load_map()
+            status, session = await conn.request("GET", "/lol-champ-select/v1/session")
+            await self.on_session(session if status == 200 else None)
+            log.info("Connecté au client League (port %s)", creds.port)
+            async for event in conn.events():
+                try:
+                    await self.on_event(event)
+                except Exception:  # un événement inattendu ne doit pas couper la connexion
+                    log.exception("Événement du client : %s", event.get("uri"))
+        except Exception as exc:
+            log.info("Connexion au client perdue : %s", exc)
+        finally:
+            self.lcu = None
+            try:
+                await conn.close()
+            except Exception:
+                pass
+            await self.on_session(None)
 
     async def _wait_ready(self, conn: LcuConnection) -> None:
         for _ in range(60):
@@ -1108,8 +1180,18 @@ class Controller:
 
 # ---------------------------------------------------------------------- routes HTTP
 
+@web.middleware
+async def bad_request(req: web.Request, handler: Any) -> web.StreamResponse:
+    """Requête mal formée (JSON invalide, id manquant) : 400 lisible plutôt qu'une erreur 500."""
+    try:
+        return await handler(req)
+    except (ValueError, KeyError, TypeError) as exc:
+        log.warning("Requête %s refusée : %r", req.path, exc)
+        return web.json_response({"ok": False, "error": "Requête invalide"}, status=400)
+
+
 def make_app(ctrl: Controller) -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[bad_request])
     routes = web.RouteTableDef()
 
     @routes.get("/")
