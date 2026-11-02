@@ -71,6 +71,7 @@ class Prefs:
         self.path = path
         self.data: dict[str, Any] = {
             "autoApply": True, "turnAlert": True, "alertFocus": True, "applySpells": True, "volume": 0.6,
+            "atypical": False,  # build ARAM proposé en « Atypique » hors ARAM : désactivé par défaut
             "sounds": dict(SOUND_EVENTS), "theme": "hextech", "flashKey": flash_key, "preferred": {},
             "disco": dict(DISCO_DEFAULTS),
         }
@@ -85,7 +86,7 @@ class Prefs:
 
     def update(self, body: dict[str, Any]) -> None:
         """Applique les réglages envoyés par la page (valeurs invalides ignorées)."""
-        for key in ("autoApply", "turnAlert", "alertFocus", "applySpells"):
+        for key in ("autoApply", "turnAlert", "alertFocus", "applySpells", "atypical"):
             if key in body:
                 self.data[key] = bool(body[key])
         if isinstance(body.get("volume"), int | float):
@@ -202,7 +203,7 @@ class Controller:
     # ------------------------------------------------------------------ état
 
     def _settings(self) -> dict[str, Any]:
-        keys = ("autoApply", "turnAlert", "alertFocus", "applySpells", "volume", "sounds", "theme", "flashKey", "disco")
+        keys = ("autoApply", "turnAlert", "alertFocus", "applySpells", "atypical", "volume", "sounds", "theme", "flashKey", "disco")
         settings = {k: self.prefs.data[k] for k in keys}
         music = self.disco_music()
         settings["disco"] = {**settings["disco"], "music": music.name if music else ""}
@@ -423,7 +424,8 @@ class Controller:
 
     def _atypical_variant(self, base: Build, existing: list[dict[str, Any]]) -> dict[str, Any] | None:
         """Le build ARAM du champion, proposé en « Atypique » hors ARAM (ignoré s'il ressemble à une proposition)."""
-        if not self._atypical or self._atypical[0] != base.champion or self._aram_mode():
+        if (not self.prefs.data["atypical"] or not self._atypical or self._atypical[0] != base.champion
+                or self._aram_mode()):
             return None
         variant = self._atypical[1]
 
@@ -1121,7 +1123,7 @@ class Controller:
             await self.broadcast()
 
         # 2 bis) « Atypique » : le build ARAM du champion (une requête par champion et par jour, puis le cache)
-        if self.cfg.opgg.aram:
+        if self.cfg.opgg.aram and self.prefs.data["atypical"]:  # option off : pas de requête ARAM en plus
             try:
                 aram = await asyncio.to_thread(self.live.global_build, champ, ARAM)
             except Exception:
@@ -1457,9 +1459,14 @@ def make_app(ctrl: Controller) -> web.Application:
 
     @routes.post("/api/settings")
     async def settings(req: web.Request) -> web.Response:
+        atypical = ctrl.prefs.data["atypical"]
         ctrl.prefs.update(await req.json())
         ctrl.prefs.save()
         ctrl.state["settings"] = ctrl._settings()
+        if ctrl.prefs.data["atypical"] != atypical and ctrl.state["current"] and ctrl._base:
+            ctrl._compose()  # l'option « Atypique » ajoute ou retire la proposition tout de suite
+            if ctrl.live and ctrl.prefs.data["atypical"]:
+                ctrl._live_dirty.set()
         await ctrl.broadcast()
         return web.json_response({"ok": True})
 

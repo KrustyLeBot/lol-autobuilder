@@ -14,7 +14,7 @@ Une alternative légère à Blitz ou Porofessor, centrée sur une seule chose : 
 - **Les joueurs de la partie** : une fois la partie chargée, le rang, le winrate de la saison et les résultats de chaque joueur (ton équipe et l'équipe adverse) sur son champion (OP.GG), avec des indications : série de victoires, main du champion, peu d'expérience dessus…
 - **Ton vis-à-vis** : ses dernières parties (victoires, KDA, combien sur son champion) et la lecture du duel par OP.GG (avantage en lane, en solo kills, conseil). Le build de ton champion reste affiché pendant la partie.
 - **ARAM** : en ARAM, lolbuilds applique un build issu des **statistiques d'ARAM** d'OP.GG (runes, sorts, items, item set pour l'Abîme hurlant), et plus celui d'une lane de la faille.
-- **Build atypique** : dans les autres modes, le build ARAM du champion est proposé en dernier, avec l'étiquette « Atypique : build ARAM » (jamais appliqué par défaut). Il est ignoré s'il ressemble déjà à une proposition.
+- **Build atypique** (à activer dans les Réglages) : dans les autres modes, le build ARAM du champion est proposé en dernier, avec l'étiquette « Atypique : build ARAM » (jamais appliqué par défaut). Il est ignoré s'il ressemble déjà à une proposition.
 - **Disco pick** (à activer dans les Réglages) : pendant ton tour de pick, un bouton lance une roulette eurobeat (musique, lumières, compte-tours) qui tire au sort un champion que tu possèdes dans ta lane, son build et tes sorts, puis le verrouille dès l'arrêt de la roulette (on assume !). Rien n'apparaît dans League avant la fin de la roulette, qui accélère s'il reste moins de 5 secondes pour choisir. Pas de Disco pick en ARAM. Musique livrée : « 夢の向こうへ » (créée avec Suno par progressivesubtleties471). Pour mettre ton propre morceau, pose un fichier `disco-music.mp3` dans le dossier `%USERPROFILE%\.lolbuilds`.
 - **Thèmes** aux couleurs de Runeterra : Hextech, Noxus, Piltover et Ionia.
 
@@ -57,6 +57,7 @@ Tout se règle dans **Réglages** (icône d'engrenage à gauche) :
 | Application automatique | applique le meilleur build dès que ton champion est verrouillé |
 | Alertes | fenêtre au premier plan et son quand c'est ton tour de bannir ou de choisir ; un son au choix pour chaque moment |
 | Builds en cache | « Tout télécharger » prépare les builds de tous les champions d'un coup (quelques minutes) et indique la date de la dernière récupération |
+| Build atypique (ARAM) | désactivé par défaut ; activé, le build ARAM du champion est proposé en dernier en partie normale, jamais appliqué tout seul |
 | Sorts d'invocateur | désactivé : lolbuilds applique le build et les runes mais ne touche jamais à tes sorts (tu peux toujours choisir une paire à la main) |
 | Touche de Flash | Flash sur D, sur F, ou là où le build le met |
 | Thème | Hextech, Noxus, Piltover ou Ionia |

@@ -8,6 +8,7 @@
   - consulter un autre rôle ne remplace plus ton build ;
   - deux applications ne se chevauchent plus (item sets écrasés) ;
   - une panne d'OP.GG ne bloque plus l'affichage.
+- **Build atypique en option** : la proposition « Atypique : build ARAM » des parties normales est désactivée par défaut. Pour la retrouver : Réglages › Champ select.
 - **Item set en premier** : l'item set de lolbuilds passe devant ceux des autres applis dans la boutique, donc c'est lui que le jeu présélectionne.
 - **Arena et autres modes** : les builds de la Faille sont affichés mais jamais appliqués tout seuls.
 - **Installation et portable** : plus de seconde fenêtre lolbuilds au relancement. Un `config.toml` invalide est signalé au lieu d'empêcher le démarrage. La désinstallation ferme lolbuilds s'il est ouvert.

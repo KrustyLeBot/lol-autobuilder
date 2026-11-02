@@ -204,6 +204,7 @@ function renderSettings() {
   $("#set-focus").checked = set.alertFocus;
   $("#set-auto").checked = set.autoApply;
   $("#set-spells").checked = set.applySpells;
+  $("#set-atypical").checked = set.atypical;
   if (!keep($("#set-volume"))) $("#set-volume").value = set.volume;
   $("#set-volume-val").textContent = `${Math.round(set.volume * 100)} %`;
   document.querySelectorAll("[data-setflash]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setflash === set.flashKey)));
@@ -923,6 +924,7 @@ $("#set-alert").addEventListener("change", (e) => post("/api/settings", { turnAl
 $("#set-focus").addEventListener("change", (e) => post("/api/settings", { alertFocus: e.target.checked }));
 $("#set-auto").addEventListener("change", (e) => post("/api/settings", { autoApply: e.target.checked }));
 $("#set-spells").addEventListener("change", (e) => post("/api/settings", { applySpells: e.target.checked }));
+$("#set-atypical").addEventListener("change", (e) => post("/api/settings", { atypical: e.target.checked }));
 $("#set-volume").addEventListener("input", (e) => { $("#set-volume-val").textContent = `${Math.round(e.target.value * 100)} %`; });
 $("#set-volume").addEventListener("change", (e) => {
   post("/api/settings", { volume: Number(e.target.value) });

@@ -528,6 +528,7 @@ def test_aram_option_off_keeps_the_ranked_behaviour(tmp_path, monkeypatch):
 
 
 def test_ranked_gets_the_aram_build_as_last_atypical_proposal(ctrl):
+    ctrl.prefs.update({"atypical": True})
     ctrl.live.source.aram_perk = 8229
     run(ctrl, ahri_vs([134]))
     variants = ctrl.state["current"]["build"]["variants"]
@@ -538,6 +539,7 @@ def test_ranked_gets_the_aram_build_as_last_atypical_proposal(ctrl):
 
 
 def test_atypical_proposal_skipped_when_identical_to_the_ranked_build(ctrl):
+    ctrl.prefs.update({"atypical": True})
     run(ctrl, ahri_vs([134]))  # build ARAM de la fausse source = build classé
     tags = [v["tags"][0] for v in ctrl.state["current"]["build"]["variants"]]
     assert "Atypique : build ARAM" not in tags
@@ -1032,3 +1034,12 @@ def test_arena_is_shown_but_never_applied(ctrl):
     run(ctrl, s)
     assert ctrl.state["champSelect"]["mode"] == "other"
     assert ctrl.state["applied"] is None and not any(m == "POST" for m, *_ in ctrl.lcu.calls)
+
+
+def test_atypical_proposal_is_off_by_default(ctrl):
+    ctrl.live.source.aram_perk = 8229
+    assert ctrl.prefs.data["atypical"] is False
+    run(ctrl, ahri_vs([134]))
+    tags = [v["tags"][0] for v in ctrl.state["current"]["build"]["variants"]]
+    assert not any(t.startswith("Atypique") for t in tags)
+    assert "build Ahri aram" not in ctrl.live.source.calls  # aucune requête ARAM en plus
